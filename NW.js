@@ -137,10 +137,14 @@ function level_to_privilege_name(level) {
 }
 
 function form_userinfo(name, colors, homes) {
+	if (typeof colors === "string")
+		colors = [colors]
+	if (typeof homes === "string")
+		homes = [homes]
 	say(  "• Name: " + name +
 	    `\n• Color${ (colors.length > 1) ? "s" : "" }: ` + colors.join(", ") +
 	    "\n• Home: " + homes.join(", ") +
-	    "\n• Permission level: " + level_to_privilege_name(privileges[homes[0]]))
+	    "\n• Permission level: " + level_to_privilege_name(privileges[homes[0]])) // should display all of them, linked to homes
 }
 
 function ban_user(home) {
@@ -288,10 +292,7 @@ ${ devpref }evaljs **[SUPERUSER ONLY]** - Execute js! [very dangerous]`)
 				say(msg + `\n(And the perms of ${ level_to_privilege_name(privileges[homes_of_username]) })`);
 			} else if (homes_of_username.length == 1) {
 				let infos = current_users[homes_of_username[0]]
-				say(  "• Name: " + infos[0] +
-					"\n• Color  │ " + infos[1] +
-					"\n• Home   | " + homes_of_username[0] +
-					"\n• Permission level " + level_to_privilege_name(privileges[homes_of_username[0]])
+				form_userinfo(infos[0], infos[1], homes_of_username)
 			} else if (homes_of_username.length > 1) {
 				let colors = current_users[username][1]
 				form_userinfo(username, colors, homes_of_username)
