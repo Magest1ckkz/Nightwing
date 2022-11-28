@@ -6,7 +6,8 @@ Prototype:
 | file
 Legend:
 * ? → wildcards
-†   → can be absent or not structured as it should be (e.g. created on the first script run)
+†   → can be absent or not structured as it should be (e.g. created on the
+      first script run)
 ‡   → the same as above but without any consequences (normal)
 
 For running the bot:
