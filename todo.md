@@ -4,6 +4,7 @@
 - [ ] Ban/Unban users command
 - [ ] Changelog
 - [ ] Version control
+- [ ] Live session
 
 ## Future plans
 - [ ] Python inline interpreter (`eval(str)` in Python, not `exec(str)`).
