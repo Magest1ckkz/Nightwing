@@ -298,7 +298,7 @@ ${ devpref }evaljs **[SUPERUSER ONLY]** - Execute js! [very dangerous]`)
 			fs.writeFileSync(fn, contents, { encoding: "utf8" })
 		} catch(e) {
 			if (e.code == "ENOENT") {
-				say("this file couldn't be saved because it have either illegal symbols, or the file name is too long");
+				say("This file couldn't be saved because it have either illegal symbols, or the file name is too long");
 			}
 			console.log(e.toString())
 		}
