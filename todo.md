@@ -5,6 +5,7 @@
 - [ ] Changelog
 - [ ] Version control
 - [ ] Live session
+<br>In Live session, it does not uses filesystem, and files saved in live session will be removed after deactivating it. Developer tools are also disabled.
 
 ## Future plans
 - [ ] Python inline interpreter (`eval(str)` in Python, not `exec(str)`).
