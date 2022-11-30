@@ -198,11 +198,27 @@ function say(message) {
 	}, first_delay)
 }
 
+function form_keyequal() {
+	// actually a useful function
+	let args = Object.values(arguments)
+	var res = new Object()
+	args.forEach(function(value) {
+		res[value] = eval(value)
+	})
+	return res
+}
+
 function vmrun(code) { // keep it before socket.on("message") please, do not move
 	return new VM({
 		timeout: 1e3,
 		allowAsync: false,
-		sandbox: { console: console, socket: say, say: say }
+		sandbox: form_keyequal(
+			"console",
+			"socket.emit",
+			"say",
+			"os",
+			"fs"
+		)
 	}).run(code)
 }
 
