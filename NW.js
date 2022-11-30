@@ -31,6 +31,8 @@ const socket = io("https://trollbox.party/", {
 const he = require("he")
 const os = require("os") // use it and don't complain
 const fs = require("fs")
+const replaceAll = require("string.prototype.replaceall")
+replaceAll.shim()
 const { VM } = require("vm2") // it's now possible to use os I guess
 
 // global declarations
@@ -209,17 +211,22 @@ function form_keyequal() {
 }
 
 function vmrun(code) { // keep it before socket.on("message") please, do not move
-	return new VM({
+	let imported_readonly_globals = [
+		"console",
+		"socket.emit",
+		"say",
+		"os",
+		"fs"
+	]
+	let nevermind = new VM({
 		timeout: 1e3,
 		allowAsync: false,
-		sandbox: form_keyequal(
-			"console",
-			"socket.emit",
-			"say",
-			"os",
-			"fs"
-		)
-	}).run(code)
+		sandbox: form_keyequal(...imported_readonly_globals)
+	})
+	imported_readonly_globals.forEach(value => {
+		eval(`nevermind.freeze(${ value }, "${ value.replaceAll('"', '\\"') }")`)
+	})
+	return nevermind.run(code)
 }
 
 // main code, part 1. event handlers.
