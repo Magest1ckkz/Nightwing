@@ -16,11 +16,11 @@ function escapeRegExp(string) {
 
 const braile_map = " A1B'K2L@CIF/MSP\"E3H9O6R^DJG>NTQ,*5<-U8V.%[$+X!&;:4\\0Z7(_?W]#Y)=".split("").reduce((o, n, i) => {
 	return o[n] = "⠀⠁⠂⠃⠄⠅⠆⠇⠈⠉⠊⠋⠌⠍⠎⠏⠐⠑⠒⠓⠔⠕⠖⠗⠘⠙⠚⠛⠜⠝⠞⠟⠠⠡⠢⠣⠤⠥⠦⠧⠨⠩⠪⠫⠬⠭⠮⠯⠰⠱⠲⠳⠴⠵⠶⠷⠸⠹⠺⠻⠼⠽⠾⠿"[i],
-	       o[n.toLowerCase()] = o[n], o;
-}, {});
+	       o[n.toLowerCase()] = o[n], o
+}, {})
 
 function toBraile(string) {
-	return string.split("").braile_map(c => map[c]).join("");
+	return string.split("").braile_map(c => map[c]).join("")
 }
 
 // node.js includes
@@ -29,40 +29,40 @@ const socket = io("https://trollbox.party/", {
 	path: "/api/v0/si"
 })
 const he = require("he")
-const os = require("os") // use it and don't complain
+const os = require("os")
 const fs = require("fs")
 const replaceAll = require("string.prototype.replaceall")
 replaceAll.shim()
-const { VM } = require("vm2") // it's now possible to use os I guess
+const { VM } = require("vm2")
 
 // global declarations
-var privilege_key = {
+const privilege_key = {
 	"User"     : 1,
 	"Moderator": 2,
 	"Superuser": 3,
 	"Owner"    : 4
 }
-var admstr = Object.keys(privilege_key)
+let admstr = Object.keys(privilege_key)
 
-var privileges = {
+let privileges = {
 	"FFF38787JKDS3Z1E133CMEHDSMFF3M3F": privilege_key["Owner"], // Magestick
 	"EF1ASZFZ1HH24AS3CE1FASZEEHECFFMH": privilege_key["Superuser"], // Anton
-	"DS13387Z1EDSDS1ZASHDSDSE12EM2372": privilege_key["Superuser"], // Snowpix I guess
+	"DS13387Z1EDSDS1ZASHDSDSE12EM2372": privilege_key["Superuser"],
 	"EDS873CZCASH3FZH3Z187ASZ4M43Z1JK": privilege_key["Superuser"], // FidgetSpinzz
-	"ECFF3873JKZ1CE287ZDSAS3FJKF187HZ": privilege_key["Superuser"], // cryolazulite
+	"EAS3CFJK27ZFCZ72FM2CJKJK2C1EDSHZ": privilege_key["Superuser"], // cryolazulite
 }
 
-var privileges = {}
-var myhome = ""
+let privileges = {}
+let myhome = ""
 
 const userfiles = "./PublicData/"
 const path_privileges = "./privileges.json"
 const path_blacklist = "./blacklist.json"
 
 let freeze_timeout_handler = false
-var frozen = false
+let frozen = false
 
-var current_users = {}
+let current_users = {}
 
 const mynick = `NW.js [${ pref }]`
 const mycolor = "royalblue"
@@ -94,7 +94,7 @@ function save_obj(fp, obj) {
 
 function load_config() {
 	let res = true
-	var loaded = load_obj(path_privileges)
+	let loaded = load_obj(path_privileges)
 	if (typeof loaded === "object") {
 		privileges = res
 		myhome = get_key_by_value(privilege_key["Owner"])
@@ -104,7 +104,7 @@ function load_config() {
 		res = false
 	}
 
-	var loaded = load_obj(path_blacklist)
+	let loaded = load_obj(path_blacklist)
 	if (typeof loaded === "object") {
 		blacklist = loaded["blacklist"] // a list
 	} else if (loaded === false) {
@@ -116,9 +116,9 @@ function load_config() {
 
 function save_config() {
 	let res = true
-	var saved = save_obj(path_privileges, privileges)
+	let saved = save_obj(path_privileges, privileges)
 	res = saved
-	var saved = save_obj(path_blacklist, {"blacklist": blacklist})
+	let saved = save_obj(path_blacklist, {"blacklist": blacklist})
 	res = res && saved // don't set it to true if it is false
 	return res
 }
@@ -145,7 +145,7 @@ function form_userinfo(name, colors, homes) {
 		homes = [homes]
 	say(  "• Name: " + name +
 	    `\n• Color${ (colors.length > 1) ? "s" : "" }: ` + colors.join(", ") +
-	    "\n• Home: " + homes.join(", ") +
+	    "\n• Home{ (homes.length > 1) ? "s" : "" }: " + homes.join(", ") +
 	    "\n• Permission level: " + level_to_privilege_name(privileges[homes[0]])) // should display all of them, linked to homes
 }
 
@@ -175,17 +175,13 @@ function shutdown() {
 }
 
 function find_home(username) {
-	// W.I.P.
-	/*
-	var homes = []
-	for (let key in current_users) {
-		current_users[key].forEach(value => {
-			if (value[0] == username)
-				homes.push(key)
-		})
-	}
-	return homes
-	*/
+	let found_homes = []
+	Object.keys(current_users).forEach(key => {
+		let value = current_users[key]
+		if (value[0] == username)
+			found_homes.push(key)
+	})
+	return found_homes
 }
 
 function say(message) {
@@ -203,7 +199,7 @@ function say(message) {
 function form_keyequal() {
 	// actually a useful function
 	let args = Object.values(arguments)
-	var res = new Object()
+	let res = new Object()
 	args.forEach(function(value) {
 		res[value] = eval(value)
 	})
@@ -220,8 +216,7 @@ function vmrun(code) { // keep it before socket.on("message") please, do not mov
 	]
 	let nevermind = new VM({
 		timeout: 1e3,
-		allowAsync: false,
-		sandbox: form_keyequal(...imported_readonly_globals)
+		allowAsync: false
 	})
 	imported_readonly_globals.forEach(value => {
 		eval(`nevermind.freeze(${ value }, "${ value.replaceAll('"', '\\"') }")`)
@@ -231,15 +226,15 @@ function vmrun(code) { // keep it before socket.on("message") please, do not mov
 
 // main code, part 1. event handlers.
 socket.on("message", function(data) {
-	var is_me = data.nick == mynick && (data.home == myhome || myhome == "---");
-	var is_system = data.home === "trollbox";
-	var do_not_process = is_me || is_system;
+	let is_me = data.nick == mynick && (data.home == myhome || myhome == "---")
+	let is_system = data.home === "trollbox";
+	let do_not_process = is_me || is_system;
 	if (do_not_process) return
 
 	data.msg = he.decode(data.msg)
-	var msg = data.msg.trim()
-	var test_pref = msg.match(regex_pref)
-	var test_devpref = msg.match(regex_devpref)
+	let msg = data.msg.trim()
+	let test_pref = msg.match(regex_pref)
+	let test_devpref = msg.match(regex_devpref)
 	let is_dev_command = false
 	if (test_devpref) {
 		is_dev_command = true
@@ -249,9 +244,9 @@ socket.on("message", function(data) {
 	} else {
 		return // it's not a command, ignore
 	}
-	var args = msg.split(" ")
-	var duck = args.splice(1).join(" ")
-	var command = args[0]
+	let args = msg.split(" ")
+	let duck = args.splice(1).join(" ")
+	let command = args[0]
 
 	if (command == "unfreeze" && is_dev_command) {
 		unfreeze()
@@ -261,7 +256,7 @@ socket.on("message", function(data) {
 
 	if (command == "help") {
 		say(`\
-**NW.js v0.1.0 ALPHA 3**
+**NW.js v0.5**
 
 ${ pref }help - Shows this message
 ${ pref }say - Say something!
@@ -273,11 +268,11 @@ ${ devpref }unfreeze **[SUPERUSER ONLY]** - Unfreeze bot (continue reacting to c
 ${ devpref }shutdown **[SUPERUSER ONLY]** - Shut down the bot
 ${ devpref }evaljs **[SUPERUSER ONLY]** - Execute js! [very dangerous]`)
 	} else if (command == "load") {
-		var shorthand = args[0]
-		var fn = userfiles + shorthand + ".txt"
+		let shorthand = args[0]
+		let fn = userfiles + shorthand + ".txt"
 
 		try {
-			var contents = fs.readFileSync(fn, { encoding: "utf8" })
+			let contents = fs.readFileSync(fn, { encoding: "utf8" })
 		} catch(e) {
 			if (e.code == "ENOENT") {
 				say(`man there's literally no "${ args[0] }" file`)
@@ -286,19 +281,19 @@ ${ devpref }evaljs **[SUPERUSER ONLY]** - Execute js! [very dangerous]`)
 		}
 		say("File contents:\n" + data)
 	} else if (command == "save") {
-		var shorthand = args[0]
-		var fn = userfiles + shorthand + ".txt"
+		let shorthand = args[0]
+		let fn = userfiles + shorthand + ".txt"
 
 		if (!fs.existsSync(userfiles)) {
 			fs.mkdirSync(userfiles);
 		}
 
-		var contents = "" + args.splice(2).join(" ")
+		let contents = "" + args.splice(2).join(" ")
 		try {
 			fs.writeFileSync(fn, contents, { encoding: "utf8" })
 		} catch(e) {
 			if (e.code == "ENOENT") {
-				say("This file couldn't be saved because it have either illegal symbols, or the file name is too long");
+				say("this file couldn't be saved because it have either illegal symbols, or the file name is too long");
 			}
 			console.log(e.toString())
 		}
@@ -331,53 +326,30 @@ ${ devpref }evaljs **[SUPERUSER ONLY]** - Execute js! [very dangerous]`)
 				return "missing arg";
 			}
 			try {
-				/*
-				Stop using this because:
-				It's possible to obfuscate code so that the bot cannot match
-				"child_process" and allows the code to be actually executed
-				example: (function(_0x29bdc6,_0x60ea19){var _0x36604f=_0x29bdc6();...
-				         ↑ contains child_process
-
-				if (duck.toLowerCase().includes('child_process')){
-					say("ERROR: Illegal access to computer detected!")
-					return "illegal";
-					}
-				*/
-
-				var result = vmrun(duck);
-				// say("> "+eval(duck)); equal to the line below ↓
-				say(`> ${ result }`); // better than the line above ↑
+				let result = vmrun(duck)
+				say(`> ${ result }`)
 			} catch (e) {
-				say(`*${ e.toString() }*`);
+				say(`*${ e.toString() }*`)
 			}
 		} else {
 			say("❌ No admin permissions.")
 		}
 	} else if (command == "say") {
 		if (duck == "") {
-			say("Missing argument!");
-			return "missing arg";
+			say("Missing argument!")
+			return "missing arg"
 		}
-		say(duck);
+		say(duck)
 	} else if (command == "test") {
 		if (duck == "") {
 			say("Missing argument!")
-			return "missing arg";
+			return "missing arg"
 		}
-		say(toBraile(duck));
+		say(toBraile(duck))
 	}
 })
 
 socket.on("update users", function(data) {
-	/* wtf is this?..
-	for (let key in data) {
-		let home = data[key].home
-		if (!current_users[home]) {
-			current_users[home] = []
-		}
-		current_users[home].push([(data[key].nick), data[key].color])
-	}
-	*/
 	current_users = {} // empty it
 	data.forEach((user) => {
 		let username = ""
@@ -396,5 +368,5 @@ socket.on("update users", function(data) {
 	})
 })
 
-// main code, part 2
-socket.emit("user joined", mynick, mycolor, "", "")
+// main code, part 2. joining.
+socket.emit("user joined", mynick, mycolor)
