@@ -4,9 +4,9 @@
 - [ ] Ban/Unban users command
 - [ ] Changelog
 - [ ] Version control
-- [ ] Live session
-<br>In Live session, it does not uses filesystem, and files saved in live session will be removed after deactivating it. Developer tools are also disabled.
+- [ ] Live session - In Live session, it does not uses filesystem, and files saved in live session will be removed after deactivating it. Developer tools are also disabled.
 - [ ] Changelog in +about command
+- [ ] Themes: `xp_theme_borders = "╭╮└┘─│├┤".split("")` for WinXP style, `borders = "╭╮╰╯─│├┤".split("")` for default Win11/General style, `10_theme_borders = "┌┐└┘─│├┤".split("")` for Win8/10 style.
 
 ## Future plans
 - [ ] Python inline interpreter (`eval(str)` in Python, not `exec(str)`).
