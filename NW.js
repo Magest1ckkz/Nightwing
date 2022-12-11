@@ -5,6 +5,10 @@
 	licensed under MIT License
 */
 
+console.log("The starting process began.")
+
+console.log("Setting functions and values...")
+
 // import
 function get_key_by_value(object, value) {
 	return Object.keys(object).find(key => object[key] === value)
@@ -29,6 +33,7 @@ const socket = io("https://trollbox.party/", {
 	path: "/api/v0/si"
 })
 const he = require("he")
+const keypress = require("keypress")
 const os = require("os")
 const fs = require("fs")
 const replaceAll = require("string.prototype.replaceall")
@@ -44,15 +49,18 @@ const privilege_key = {
 }
 let admstr = Object.keys(privilege_key)
 
+
 let privileges = {
 	"FFF38787JKDS3Z1E133CMEHDSMFF3M3F": privilege_key["Owner"], // Magestick
 	"EF1ASZFZ1HH24AS3CE1FASZEEHECFFMH": privilege_key["Superuser"], // Anton
 	"DS13387Z1EDSDS1ZASHDSDSE12EM2372": privilege_key["Superuser"],
 	"EDS873CZCASH3FZH3Z187ASZ4M43Z1JK": privilege_key["Superuser"], // FidgetSpinzz
-	"EAS3CFJK27ZFCZ72FM2CJKJK2C1EDSHZ": privilege_key["Superuser"], // cryolazulite
+	"MASZM3CM7HMFZ3HFH21FFZ3JKFZ321DS": privilege_key["Superuser"], // cryolazulite
 }
 
-let privileges = {}
+
+// let privileges = {}
+let blacklist = {}
 let myhome = ""
 
 const userfiles = "./PublicData/"
@@ -63,6 +71,9 @@ let freeze_timeout_handler = false
 let frozen = false
 
 let current_users = {}
+
+const pref = "+"
+const devpref = "+/"
 
 const mynick = `NW.js [${ pref }]`
 const mycolor = "royalblue"
@@ -96,15 +107,19 @@ function load_config() {
 	let res = true
 	let loaded = load_obj(path_privileges)
 	if (typeof loaded === "object") {
-		privileges = res
-		myhome = get_key_by_value(privilege_key["Owner"])
+		privileges = loaded
+		Object.keys(privileges).forEach(key => {
+			let value = res[key]
+			privileges[key] = privilege_key[value]
+		})
+		myhome = get_key_by_value(privileges, privilege_key["Owner"])
 	} else if (loaded === false) {
 		privileges = {}
 		myhome = "---"
 		res = false
 	}
 
-	let loaded = load_obj(path_blacklist)
+	loaded = load_obj(path_blacklist)
 	if (typeof loaded === "object") {
 		blacklist = loaded["blacklist"] // a list
 	} else if (loaded === false) {
@@ -118,7 +133,7 @@ function save_config() {
 	let res = true
 	let saved = save_obj(path_privileges, privileges)
 	res = saved
-	let saved = save_obj(path_blacklist, {"blacklist": blacklist})
+	saved = save_obj(path_blacklist, {"blacklist": blacklist})
 	res = res && saved // don't set it to true if it is false
 	return res
 }
@@ -143,10 +158,12 @@ function form_userinfo(name, colors, homes) {
 		colors = [colors]
 	if (typeof homes === "string")
 		homes = [homes]
-	say(  "• Name: " + name +
+	say(
+		  "• Name: " + he.decode(name) +
 	    `\n• Color${ (colors.length > 1) ? "s" : "" }: ` + colors.join(", ") +
-	    "\n• Home{ (homes.length > 1) ? "s" : "" }: " + homes.join(", ") +
-	    "\n• Permission level: " + level_to_privilege_name(privileges[homes[0]])) // should display all of them, linked to homes
+	    `\n• Home${ (homes.length > 1) ? "s" : "" }: ` + homes.join(", ") +
+	    "\n• Permission level: " + level_to_privilege_name(privileges[homes[0]]) // should display all of them, linked to homes
+	)
 }
 
 function ban_user(home) {
@@ -162,14 +179,19 @@ function freeze() {
 	freeze_timeout_handler = setTimeout( () => {
 		shutdown()
 	}, 1 * 3600 * 1e3) // 1 hour
+	say(he.decode("+freeze &#x2744;&#xFE0F;"))
+	console.log("The bot is frozen now.")
 }
 
 function unfreeze() {
 	frozen = false
 	clearTimeout(freeze_timeout_handler)
+	say("Unfreezing... I can respond to commands again!")
+	console.log("The bot responds to commands again.")
 }
 
 function shutdown() {
+	console.log("Shutting down...")
 	save_config()
 	process.exit()
 }
@@ -224,11 +246,35 @@ function vmrun(code) { // keep it before socket.on("message") please, do not mov
 	return nevermind.run(code)
 }
 
-// main code, part 1. event handlers.
+function keyhandle(a, kbinfo) {
+	if (!kbinfo)
+		return
+
+	let key = kbinfo.name
+	if (key == "s") {
+		return shutdown()
+	}
+}
+
+// main code, part 1. initialization.
+console.log("Loading configurations...")
+load_config()
+
+// main code, part 2. event handlers.
+console.log("Setting keyboard event handler...")
+keypress(process.stdin)
+process.stdin.on("keypress", keyhandle)
+process.stdin.setRawMode(true)
+process.stdin.resume()
+
+console.log("Authenticating...")
+socket.emit("user joined", mynick, mycolor)
+
+console.log("Setting message event handler...")
 socket.on("message", function(data) {
 	let is_me = data.nick == mynick && (data.home == myhome || myhome == "---")
-	let is_system = data.home === "trollbox";
-	let do_not_process = is_me || is_system;
+	let is_system = data.home === "trollbox"
+	let do_not_process = is_me || is_system
 	if (do_not_process) return
 
 	data.msg = he.decode(data.msg)
@@ -245,14 +291,17 @@ socket.on("message", function(data) {
 		return // it's not a command, ignore
 	}
 	let args = msg.split(" ")
-	let duck = args.splice(1).join(" ")
+	let duck = args.slice(1).join(" ")
 	let command = args[0]
+	// console.log("%o\n%o\n%o\n%o", msg, args, duck, command);shutdown()
 
 	if (command == "unfreeze" && is_dev_command) {
 		unfreeze()
 	} else if (command == "freeze" && is_dev_command) {
 		freeze()
 	}
+
+	if (frozen) return
 
 	if (command == "help") {
 		say(`\
@@ -268,32 +317,32 @@ ${ devpref }unfreeze **[SUPERUSER ONLY]** - Unfreeze bot (continue reacting to c
 ${ devpref }shutdown **[SUPERUSER ONLY]** - Shut down the bot
 ${ devpref }evaljs **[SUPERUSER ONLY]** - Execute js! [very dangerous]`)
 	} else if (command == "load") {
-		let shorthand = args[0]
+		let shorthand = args[1]
 		let fn = userfiles + shorthand + ".txt"
-
+		let contents = ""
 		try {
-			let contents = fs.readFileSync(fn, { encoding: "utf8" })
+			contents = fs.readFileSync(fn, { encoding: "utf8" })
 		} catch(e) {
 			if (e.code == "ENOENT") {
-				say(`man there's literally no "${ args[0] }" file`)
+				say(`man there's literally no "${ args[1] }" file`)
 			}
 			console.log(e.toString())
 		}
-		say("File contents:\n" + data)
+		say("File contents:\n" + contents)
 	} else if (command == "save") {
-		let shorthand = args[0]
+		let shorthand = args[1]
 		let fn = userfiles + shorthand + ".txt"
 
 		if (!fs.existsSync(userfiles)) {
-			fs.mkdirSync(userfiles);
+			fs.mkdirSync(userfiles)
 		}
 
-		let contents = "" + args.splice(2).join(" ")
+		let contents = args.splice(2).join(" ")
 		try {
 			fs.writeFileSync(fn, contents, { encoding: "utf8" })
 		} catch(e) {
 			if (e.code == "ENOENT") {
-				say("this file couldn't be saved because it have either illegal symbols, or the file name is too long");
+				say("this file couldn't be saved because it have either illegal symbols, or the file name is too long")
 			}
 			console.log(e.toString())
 		}
@@ -303,11 +352,11 @@ ${ devpref }evaljs **[SUPERUSER ONLY]** - Execute js! [very dangerous]`)
 			let username = duck
 			let homes_of_username = find_home(username)
 			if (current_users[username]) {
-				let msg = `Home has ${ current_users[username].length } name${ current_users[username].length > 1 ? "s" : "" } attached to it:`;
+				let msg = `Home has ${ current_users[username].length } name${ current_users[username].length > 1 ? "s" : "" } attached to it:`
 				current_users[username].forEach(function(value, index) {
 					msg += `\n ${ value[0] }, with the color of ${ value[1] }`
 				})
-				say(msg + `\n(And the perms of ${ level_to_privilege_name(privileges[homes_of_username]) })`);
+				say(msg + `\n(And the perms of ${ level_to_privilege_name(privileges[homes_of_username]) })`)
 			} else if (homes_of_username.length == 1) {
 				let infos = current_users[homes_of_username[0]]
 				form_userinfo(infos[0], infos[1], homes_of_username)
@@ -332,7 +381,7 @@ ${ devpref }evaljs **[SUPERUSER ONLY]** - Execute js! [very dangerous]`)
 				say(`*${ e.toString() }*`)
 			}
 		} else {
-			say("❌ No admin permissions.")
+			say(he.decode("&#10060; No admin permissions."))
 		}
 	} else if (command == "say") {
 		if (duck == "") {
@@ -351,22 +400,24 @@ ${ devpref }evaljs **[SUPERUSER ONLY]** - Execute js! [very dangerous]`)
 
 socket.on("update users", function(data) {
 	current_users = {} // empty it
-	data.forEach((user) => {
+	Object.keys(data).forEach(key => {
+		let value = data[key]
 		let username = ""
-		let color = ""
 		let home = ""
-		Object.keys(user).forEach((key) => {
-			let value = user[key]
+		let color = ""
+		Object.keys(value).forEach(key => {
+			let sub_value = he.decode(value[key])
 			if (key == "nick") {
-				username = value
-			} else if (key == "color") {
-				color = value
+				username = sub_value
 			} else if (key == "home") {
-				home = value
+				home = sub_value
+			} else if (key == "color") {
+				color = sub_value
 			}
 		})
+		if (home !== "trollbox")
+			current_users[value] = [username, home, color]
 	})
 })
 
-// main code, part 2. joining.
-socket.emit("user joined", mynick, mycolor)
+console.log("Listening to commands from now.")
