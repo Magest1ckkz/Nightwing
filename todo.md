@@ -7,6 +7,8 @@
 - [ ] Live session - In Live session, it does not uses filesystem, and files saved in live session will be removed after deactivating it. Developer tools are also disabled.
 - [ ] Changelog in +about command
 - [ ] Themes: `xp_theme_borders = "╭╮└┘─│├┤".split("")` for WinXP style, `borders = "╭╮╰╯─│├┤".split("")` for default Win11/General style, `10_theme_borders = "┌┐└┘─│├┤".split("")` for Win8/10 style.
+- [ ] Limit maximum size for each file and all files in total.
+- [ ] Joke feature: Measuring the temperature in the chat, probably based on inactivity or spam.
 
 ## Future plans
 - [ ] Python inline interpreter (`eval(str)` in Python, not `exec(str)`).
