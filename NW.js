@@ -1,6 +1,6 @@
 /*
 	NW.js
-	a node.js bot for trollbox.party
+	a Node bot for trollbox.party
 	developed by Magestick, Dragsun, cryolazulite
 	licensed under MIT License
 */
@@ -10,22 +10,17 @@ console.log("The starting process began.")
 console.log("Setting functions and values...")
 
 // import
-function get_key_by_value(object, value) {
-	return Object.keys(object).find(key => object[key] === value)
-}
-
-function escapeRegExp(string) {
-	return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
-}
-
-const braile_map = " A1B'K2L@CIF/MSP\"E3H9O6R^DJG>NTQ,*5<-U8V.%[$+X!&;:4\\0Z7(_?W]#Y)=".split("").reduce((o, n, i) => {
+const get_key_by_value = (object, value) => Object.keys(object).find(key => object[key] === value)
+const escape_regex = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") // $& means the whole matched string
+const swap_keys_and_values = (object) => Object.fromEntries(Object.entries(object).map(([key, value]) => [value, key]))
+const strmap = (the_map, string) => string.split("").map(c => the_map[c]).join("")
+const braille_map = " A1B'K2L@CIF/MSP\"E3H9O6R^DJG>NTQ,*5<-U8V.%[$+X!&;:4\\0Z7(_?W]#Y)=".split("").reduce((o, n, i) => {
 	return o[n] = "⠀⠁⠂⠃⠄⠅⠆⠇⠈⠉⠊⠋⠌⠍⠎⠏⠐⠑⠒⠓⠔⠕⠖⠗⠘⠙⠚⠛⠜⠝⠞⠟⠠⠡⠢⠣⠤⠥⠦⠧⠨⠩⠪⠫⠬⠭⠮⠯⠰⠱⠲⠳⠴⠵⠶⠷⠸⠹⠺⠻⠼⠽⠾⠿"[i],
 	       o[n.toLowerCase()] = o[n], o
 }, {})
-
-function toBraile(string) {
-	return string.split("").braile_map(c => map[c]).join("")
-}
+const inverse_braille_map = swap_keys_and_values(braille_map)
+const to_braille = (string) => strmap(braille_map, string)
+const from_braille = (string) => strmap(inverse_braille_map, string)
 
 // node.js includes
 const io = require("socket.io-client")
@@ -41,15 +36,31 @@ replaceAll.shim()
 const { VM } = require("vm2")
 
 // global declarations
+
+/*
 const privilege_key = {
 	"User"     : 1,
 	"Moderator": 2,
 	"Superuser": 3,
 	"Owner"    : 4
 }
-const inverse_privilege_key = Object.fromEntries(Object.entries(privilege_key).map(([key, value]) => [value, key]))
-let admstr = Object.keys(privilege_key)
+*/
 
+// probably could be done in one chain
+let privilege_key_list = [
+	"User",
+	"Moderator",
+	"Superuser",
+	"Owner"
+]
+for (let i = 0; i < 4; i++) {
+	privilege_key[privilege_key_list[i]] = i + 1
+}
+// -----------------------------------
+
+const inverse_privilege_key = swap_keys_and_values(privilege_key)
+
+/* - now this data is stored in privileges.json
 let privileges = {
 	"FFF38787JKDS3Z1E133CMEHDSMFF3M3F": privilege_key["Owner"], // Magestick
 	"EF1ASZFZ1HH24AS3CE1FASZEEHECFFMH": privilege_key["Superuser"], // Anton
@@ -57,7 +68,7 @@ let privileges = {
 	"EDS873CZCASH3FZH3Z187ASZ4M43Z1JK": privilege_key["Superuser"], // FidgetSpinzz
 	"MASZM3CM7HMFZ3HFH21FFZ3JKFZ321DS": privilege_key["Superuser"], // cryolazulite
 }
-
+*/
 
 // let privileges = {}
 let blacklist = {}
@@ -78,8 +89,32 @@ const devpref = "+/"
 const mynick = `NW.js [${ pref }]`
 const mycolor = "royalblue"
 
-const regex_pref = new RegExp(`^${ escapeRegExp(pref) }\\w+`, "g")
-const regex_devpref = new RegExp(`^${ escapeRegExp(devpref) }\\w+`, "g")
+const regex_pref = new RegExp(`^${ escape_regex(pref) }\\w+`, "g")
+const regex_devpref = new RegExp(`^${ escape_regex(devpref) }\\w+`, "g")
+
+const lang = {
+	"help": `\
+**NW.js version 0.5**
+A versatile bot for trollbox.party.
+
+${ pref }help - Show this message.
+${ pref }about - Show the information about the system the bot is running on.
+${ pref }say <message> - Say something!
+${ pref }text2braille <text> - Convert ASCII text to Braille.
+${ pref }braille2text <text> - Convert Braille to ASCII text.
+${ pref }userinfo < "home" | "nick" | "id" > <appropriate data to search by> - User info, such as nickname, color, home, and local permissions.
+${ pref }save <filename without whitespaces> <content> - Save a text file.
+${ pref }load <filename without whitespaces> - Load a text file.
+${ devpref }freeze **[SUPERUSER ONLY]** - Freeze bot (stop reacting to commands).
+${ devpref }unfreeze **[SUPERUSER ONLY]** - Unfreeze bot (continue reacting to commands).
+${ devpref }shutdown **[SUPERUSER ONLY]** - Shut down the bot.
+${ devpref }evaljs **[SUPERUSER ONLY]** - Execute JavaScript.`,
+	"low_rank": "\u274C You are not privileged enough to use this command.",
+	"err_enoent_save": "This file couldn't be saved because its name have either illegal symbols, or the file name is too long.",
+	"nothing_to_do": "Nothing to do.",
+	"wrong_format": "Wrong format!",
+	"missing_argument": "Missing argument!"
+}
 
 // procedures
 function load_obj(fp) {
@@ -94,8 +129,20 @@ function load_obj(fp) {
 }
 
 function save_obj(fp, obj) {
+	let res = JSON.stringify(obj, null, "\t")
+	let loaded_from_disk = null
+	let need_to_compare = null
 	try {
-		fs.writeFileSync(fp, JSON.stringify(obj))
+		loaded_from_disk = fs.readFileSync(fp)
+		need_to_compare = true
+	} catch(e) {
+		need_to_compare = false
+	}
+	try {
+		if (need_to_compare && res != loaded_from_disk)
+			// can overwrite previous file backups!
+			fs.writeFileSync(fp + ".bak", loaded_from_disk)
+		fs.writeFileSync(fp, res)
 		return true
 	} catch(e) {
 		// not much to handle
@@ -108,8 +155,7 @@ function load_config() {
 	let loaded = load_obj(path_privileges)
 	if (typeof loaded === "object") {
 		privileges = loaded
-		Object.keys(privileges).forEach(key => {
-			let value = res[key]
+		Object.entries(privileges).forEach(([key, value]) => {
 			privileges[key] = privilege_key[value]
 		})
 		myhome = get_key_by_value(privileges, privilege_key["Owner"])
@@ -124,17 +170,18 @@ function load_config() {
 		blacklist = loaded["blacklist"] // a list
 	} else if (loaded === false) {
 		blacklist = []
-		// does not matters
+		res = false
 	}
 	return res
 }
 
 function save_config() {
 	let res = true
-	let saved = save_obj(path_privileges, privileges)
-	res = saved
-	saved = save_obj(path_blacklist, {"blacklist": blacklist})
-	res = res && saved // don't set it to true if it is false
+	Object.entries(privileges).forEach(([key, value]) => {
+		privileges[key] = rank_to_privilege_name(value)
+	})
+	res = save_obj(path_privileges, privileges)
+	res &&= save_obj(path_blacklist, {"blacklist": blacklist})
 	return res
 }
 
@@ -149,7 +196,7 @@ function check_if_this_privilege_or_higher(source, needle) {
 	return false
 }
 
-function level_to_privilege_name(level) {
+function rank_to_privilege_name(level) {
 	// return get_key_by_value(privilege_key, level)
 	return inverse_privilege_key[level]
 }
@@ -163,7 +210,7 @@ function form_userinfo(name, colors, homes) {
 		  "• Name: " + he.decode(name) +
 	    `\n• Color${ (colors.length > 1) ? "s" : "" }: ` + colors.join(", ") +
 	    `\n• Home${ (homes.length > 1) ? "s" : "" }: ` + homes.join(", ") +
-	    "\n• Permission level: " + level_to_privilege_name(privileges[homes[0]]) // should display all of them, linked to homes
+	    "\n• Permission level: " + rank_to_privilege_name(privileges[homes[0]]) // should display all of them, linked to homes
 	)
 }
 
@@ -180,15 +227,19 @@ function freeze() {
 	freeze_timeout_handler = setTimeout( () => {
 		shutdown()
 	}, 1 * 3600 * 1e3) // 1 hour
-	say(he.decode("+freeze &#x2744;&#xFE0F;"))
+	say("+freeze \u2744\uFE0F")
 	console.log("The bot is frozen now.")
 }
 
 function unfreeze() {
-	frozen = false
-	clearTimeout(freeze_timeout_handler)
-	say("Unfreezing... I can respond to commands again!")
-	console.log("The bot responds to commands again.")
+	if (frozen) {
+		frozen = false
+		clearTimeout(freeze_timeout_handler)
+		say("Unfreezing... I can respond to commands again!")
+		console.log("The bot responds to commands again.")
+	} else {
+		say(lang["nothing_to_do"])
+	}
 }
 
 function shutdown() {
@@ -197,10 +248,9 @@ function shutdown() {
 	process.exit()
 }
 
-function find_home(username) {
+function find_home_by_nickname(username) {
 	let found_homes = []
-	Object.keys(current_users).forEach(key => {
-		let value = current_users[key]
+	Object.entries(current_users).forEach(([key, value]) => {
 		if (value[0] == username)
 			found_homes.push(key)
 	})
@@ -229,17 +279,18 @@ function form_keyequal() {
 	return res
 }
 
-function vmrun(code) { // keep it before socket.on("message") please, do not move
+function vmrun(code) {
 	let imported_readonly_globals = [
 		"console",
-		"socket.emit",
-		"say",
-		"os",
-		"fs"
+		// "socket.emit", // has no effect
+		// "socket.send", // has no effect
+		// "say", // code `while (true) { say(...) }` leads to a real infinite loop
+		// "os",
+		// "fs"
 	]
 	let nevermind = new VM({
 		timeout: 1e3,
-		allowAsync: false
+		allowAsync: false // be aware of setTimeout in called functions
 	})
 	imported_readonly_globals.forEach(value => {
 		eval(`nevermind.freeze(${ value }, "${ value.replaceAll('"', '\\"') }")`)
@@ -247,17 +298,35 @@ function vmrun(code) { // keep it before socket.on("message") please, do not mov
 	return nevermind.run(code)
 }
 
-function keyhandle(a, kbinfo) {
+function keyhandle() {
+	let kbinfo = arguments[1]
 	if (!kbinfo)
 		return
 
 	let key = kbinfo.name
-	if (key == "s") {
+	if (key == "s") // document this and similar features
 		return shutdown()
-	}
 }
 
 // main code, part 1. initialization.
+
+// Load the system info
+
+/*
+	let gigabytes = 1024 ** 3
+	let cpu_info = os.cpus()[0]["model"]
+	let ram_info = Math.ceil(os.totalmem() / gigabytes)
+	delete gigabytes
+*/
+
+// Placeholders
+let cpu_info = "Intel(R) Core(TM) i3-540 CPU @ 3.06 GHz"
+let ram_info = 4
+// ------------
+
+const system_info_string = `This bot is running on ${ cpu_info } with ${ ram_info } GB of RAM.`
+delete cpu_info, ram_info
+
 console.log("Loading configurations...")
 load_config()
 
@@ -294,29 +363,26 @@ socket.on("message", function(data) {
 	let args = msg.split(" ")
 	let duck = args.slice(1).join(" ")
 	let command = args[0]
-	// console.log("%o\n%o\n%o\n%o", msg, args, duck, command);shutdown()
+	let zero_arguments = duck.trim() === ""
 
 	if (command == "unfreeze" && is_dev_command) {
-		unfreeze()
-	} else if (command == "freeze" && is_dev_command) {
-		freeze()
+		if (!check_if_this_privilege_or_higher(data.home, "Superuser"))
+			return say(lang["low_rank"])
+		say(lang["low_rank"])
 	}
 
 	if (frozen) return
 
-	if (command == "help") {
-		say(`\
-**NW.js v0.5**
+	if (command == "freeze" && is_dev_command) {
+		if (!check_if_this_privilege_or_higher(data.home, "Superuser"))
+			return say(lang["low_rank"])
+		freeze()
+	}
 
-${ pref }help - Shows this message
-${ pref }say - Say something!
-${ pref }userinfo <user> - User info (Name, Color, Home, Perms)
-${ pref }save <filename without spaces> <content> - Save a text file
-${ pref }load <filename without spaces> - Load a text file
-${ devpref }freeze **[SUPERUSER ONLY]** - Freeze bot (stop reacting to commands)
-${ devpref }unfreeze **[SUPERUSER ONLY]** - Unfreeze bot (continue reacting to commands)
-${ devpref }shutdown **[SUPERUSER ONLY]** - Shut down the bot
-${ devpref }evaljs **[SUPERUSER ONLY]** - Execute js! [very dangerous]`)
+	if (command == "help") {
+		say(lang["help"])
+	} else if (command == "about") {
+		say(system_info_string)
 	} else if (command == "load") {
 		let shorthand = args[1]
 		let fn = userfiles + shorthand + ".txt"
@@ -343,21 +409,26 @@ ${ devpref }evaljs **[SUPERUSER ONLY]** - Execute js! [very dangerous]`)
 			fs.writeFileSync(fn, contents, { encoding: "utf8" })
 		} catch(e) {
 			if (e.code == "ENOENT") {
-				say("this file couldn't be saved because it have either illegal symbols, or the file name is too long")
+				say(lang["err_enoent_save"])
 			}
 			console.log(e.toString())
 		}
-		say(`file saved! use "+load ${ shorthand }" to read it!`)
+		say(`File saved! use "+load ${ shorthand }" to read it!`)
 	} else if (command == "userinfo") {
+		return say("W.I.P.") // remove this line if the work is done
+		/* ================================================================== *
+			Needs a refactor and adding the new features according to the
+			specification in the "help" manual.
+		* ================================================================== */
 		if (duck != "") {
 			let username = duck
-			let homes_of_username = find_home(username)
+			let homes_of_username = find_home_by_nickname(username)
 			if (current_users[username]) {
 				let msg = `Home has ${ current_users[username].length } name${ current_users[username].length > 1 ? "s" : "" } attached to it:`
 				current_users[username].forEach(function(value, index) {
 					msg += `\n ${ value[0] }, with the color of ${ value[1] }`
 				})
-				say(msg + `\n(And the perms of ${ level_to_privilege_name(privileges[homes_of_username]) })`)
+				say(msg + `\n(And the perms of ${ rank_to_privilege_name(privileges[homes_of_username]) })`)
 			} else {
 				say("The specified user does not exist in the database.")
 			}
@@ -373,54 +444,48 @@ ${ devpref }evaljs **[SUPERUSER ONLY]** - Execute js! [very dangerous]`)
 			form_userinfo(data.nick, data.color, data.home)
 		}
 	} else if (command == "evaljs" && is_dev_command) {
-		if (check_if_this_privilege_or_higher(data.home, "Admin")) {
-			if (duck == "") {
-				say("Wrong format!")
-				return "missing arg"
-			}
-			try {
-				let result = vmrun(duck)
-				say(`> ${ result }`)
-			} catch (e) {
-				say(`*${ e.toString() }*`)
-			}
-		} else {
-			say(he.decode("&#10060; No admin permissions."))
+		if (!check_if_this_privilege_or_higher(data.home, "Superuser"))
+			return say(lang["low_rank"])
+		if (zero_arguments)
+			return say(lang["wrong_format"])
+		try {
+			let result = vmrun(duck)
+			say(`> ${ result }`)
+		} catch (e) {
+			say(`*${ e.toString() }*`)
 		}
 	} else if (command == "say") {
-		if (duck == "") {
-			say("Missing argument!")
-			return "missing arg"
-		}
+		if (zero_arguments) return say(lang["missing_argument"])
 		say(duck)
-	} else if (command == "test") {
-		if (duck == "") {
-			say("Missing argument!")
-			return "missing arg"
-		}
-		say(toBraile(duck))
+	} else if (command == "text2braille") {
+		if (zero_arguments) return say("Missing argument!")
+		say(to_braille(duck))
+	} else if (command == "braille2text") {
+		if (zero_arguments) return say("Missing argument!")
+		say(from_braille(duck))
+	} else if (command == "shutdown") {
+		shutdown()
 	}
 })
 
 socket.on("update users", function(data) {
-	current_users = {} // empty it
-	Object.keys(data).forEach(key => {
-		let value = data[key]
+	current_users = {}
+	Object.entries(data).forEach(([key, entry]) => {
 		let username = ""
 		let home = ""
 		let color = ""
-		Object.keys(value).forEach(key => {
-			let sub_value = he.decode(value[key])
+		Object.entries(entry).forEach(([key, value]) => {
+			let res = he.decode(value)
 			if (key == "nick") {
-				username = sub_value
+				username = res
 			} else if (key == "home") {
-				home = sub_value
+				home = res
 			} else if (key == "color") {
-				color = sub_value
+				color = res
 			}
 		})
 		if (home !== "trollbox")
-			current_users[value] = [username, home, color]
+			current_users[username] = [username, home, color]
 	})
 })
 
