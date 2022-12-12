@@ -13,6 +13,7 @@
 - [ ] Internal IDs feature
 - [ ] `+userinfo` command searches for a user (or multiple users) by nickname, home, or internal ID if used with an argument.
 - [ ] if(data.home.includes(rank>=3)) add ✅ after [nick/ID]
+- [ ] Pokemon database [wiki]
 
 ## Future plans
 - [ ] Python inline interpreter (`eval(str)` in Python, not `exec(str)`).
