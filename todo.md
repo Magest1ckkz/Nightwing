@@ -14,6 +14,7 @@
 - [ ] `+userinfo` command searches for a user (or multiple users) by nickname, home, or internal ID if used with an argument.
 - [ ] if(data.home.includes(rank>=3)) add ✅ after [nick/ID]
 - [ ] Pokemon database [wiki]
+- [ ] Make the terminology used in the code uniform.
 
 ## Future plans
 - [ ] Python inline interpreter (`eval(str)` in Python, not `exec(str)`).
