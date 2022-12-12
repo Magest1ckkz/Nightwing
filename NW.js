@@ -47,8 +47,8 @@ const privilege_key = {
 	"Superuser": 3,
 	"Owner"    : 4
 }
+const inverse_privilege_key = Object.fromEntries(Object.entries(privilege_key).map(([key, value]) => [value, key]))
 let admstr = Object.keys(privilege_key)
-
 
 let privileges = {
 	"FFF38787JKDS3Z1E133CMEHDSMFF3M3F": privilege_key["Owner"], // Magestick
@@ -150,7 +150,8 @@ function check_if_this_privilege_or_higher(source, needle) {
 }
 
 function level_to_privilege_name(level) {
-	return get_key_by_value(privilege_key, level)
+	// return get_key_by_value(privilege_key, level)
+	return inverse_privilege_key[level]
 }
 
 function form_userinfo(name, colors, homes) {
@@ -337,7 +338,7 @@ ${ devpref }evaljs **[SUPERUSER ONLY]** - Execute js! [very dangerous]`)
 			fs.mkdirSync(userfiles)
 		}
 
-		let contents = args.splice(2).join(" ")
+		let contents = args.slice(2).join(" ")
 		try {
 			fs.writeFileSync(fn, contents, { encoding: "utf8" })
 		} catch(e) {
@@ -357,7 +358,10 @@ ${ devpref }evaljs **[SUPERUSER ONLY]** - Execute js! [very dangerous]`)
 					msg += `\n ${ value[0] }, with the color of ${ value[1] }`
 				})
 				say(msg + `\n(And the perms of ${ level_to_privilege_name(privileges[homes_of_username]) })`)
-			} else if (homes_of_username.length == 1) {
+			} else {
+				say("The specified user does not exist in the database.")
+			}
+			if (homes_of_username.length == 1) {
 				let infos = current_users[homes_of_username[0]]
 				form_userinfo(infos[0], infos[1], homes_of_username)
 			} else if (homes_of_username.length > 1) {
@@ -371,8 +375,8 @@ ${ devpref }evaljs **[SUPERUSER ONLY]** - Execute js! [very dangerous]`)
 	} else if (command == "evaljs" && is_dev_command) {
 		if (check_if_this_privilege_or_higher(data.home, "Admin")) {
 			if (duck == "") {
-				say("Wrong format!");
-				return "missing arg";
+				say("Wrong format!")
+				return "missing arg"
 			}
 			try {
 				let result = vmrun(duck)
