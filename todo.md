@@ -9,7 +9,9 @@
 - [ ] Themes: `xp_theme_borders = "╭╮└┘─│├┤".split("")` for WinXP style, `borders = "╭╮╰╯─│├┤".split("")` for default Win11/General style, `10_theme_borders = "┌┐└┘─│├┤".split("")` for Win8/10 style.
 - [ ] Limit maximum size for each file and all files in total.
 - [ ] Joke feature: Measuring the temperature in the chat, probably based on inactivity or spam.
-- [ ] +sameas command [Nick or home] - List of all names used by the home
+- [ ] `+sameas` command [Nick or home] - List of all names used by the home
+- [ ] Internal IDs feature
+- [ ] `+userinfo` command searches for a user (or multiple users) by nickname, home, or internal ID if used with an argument.
 
 ## Future plans
 - [ ] Python inline interpreter (`eval(str)` in Python, not `exec(str)`).
