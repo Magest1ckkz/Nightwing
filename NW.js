@@ -47,6 +47,7 @@ const privilege_key = {
 */
 
 // probably could be done in one chain
+let privilege_key = {}
 let privilege_key_list = [
 	"User",
 	"Moderator",
@@ -182,7 +183,7 @@ function save_config() {
 		privileges[key] = rank_to_privilege_name(value)
 	})
 	res = save_obj(path_privileges, privileges)
-	res &&= save_obj(path_blacklist, {"blacklist": blacklist})
+	res &= save_obj(path_blacklist, {"blacklist": blacklist})
 	return res
 }
 
@@ -355,9 +356,9 @@ socket.on("message", function(data) {
 	let is_dev_command = false
 	if (test_devpref) {
 		is_dev_command = true
-		msg.splice(devpref.length)
+		msg = msg.slice(devpref.length)
 	} else if (test_pref) {
-		msg.splice(pref.length)
+		msg = msg.slice(pref.length)
 	} else {
 		return // it's not a command, ignore
 	}
