@@ -1,5 +1,5 @@
 /*
-	NW.js
+	Nightwing.js
 	a Node bot for trollbox.party
 	developed by Magestick, Dragsun, cryolazulite
 	licensed under MIT License
@@ -95,7 +95,7 @@ const regex_devpref = new RegExp(`^${ escape_regex(devpref) }\\w+`, "g")
 
 const lang = {
 	"help": `\
-**NW.js version 0.5**
+**Nightwing.js version 0.5**
 A versatile bot for trollbox.party.
 
 ${ pref }help - Show this message.
