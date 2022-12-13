@@ -139,10 +139,11 @@ function save_obj(fp, obj) {
 		need_to_compare = false
 	}
 	try {
-		if (need_to_compare && res != loaded_from_disk)
+		if (need_to_compare && res != loaded_from_disk) {
 			// can overwrite previous file backups!
 			fs.writeFileSync(fp + ".bak", loaded_from_disk)
-		fs.writeFileSync(fp, res)
+			fs.writeFileSync(fp, res)
+		}
 		return true
 	} catch(e) {
 		// not much to handle
@@ -215,7 +216,7 @@ function form_userinfo(name, colors, homes) {
 }
 
 function ban_user(home) {
-	blacklist.append(home)
+	blacklist.push(home)
 }
 
 function unban_user(home) {
@@ -224,7 +225,7 @@ function unban_user(home) {
 
 function freeze() {
 	frozen = true
-	freeze_timeout_handler = setTimeout( () => {
+	freeze_timeout_handler = setTimeout(() => {
 		shutdown()
 	}, 1 * 3600 * 1e3) // 1 hour
 	say("+freeze \u2744\uFE0F")
@@ -354,12 +355,13 @@ socket.on("message", function(data) {
 	let is_dev_command = false
 	if (test_devpref) {
 		is_dev_command = true
-		msg = msg.slice(devpref.length)
+		msg.splice(devpref.length)
 	} else if (test_pref) {
-		msg = msg.slice(pref.length)
+		msg.splice(pref.length)
 	} else {
 		return // it's not a command, ignore
 	}
+
 	let args = msg.split(" ")
 	let duck = args.slice(1).join(" ")
 	let command = args[0]
@@ -413,35 +415,34 @@ socket.on("message", function(data) {
 			}
 			console.log(e.toString())
 		}
-		say(`File saved! use "+load ${ shorthand }" to read it!`)
+		say(`File saved! Use "+load ${ shorthand }" to read it!`)
 	} else if (command == "userinfo") {
 		return say("W.I.P.") // remove this line if the work is done
 		/* ================================================================== *
 			Needs a refactor and adding the new features according to the
 			specification in the "help" manual.
 		* ================================================================== */
-		if (duck != "") {
-			let username = duck
-			let homes_of_username = find_home_by_nickname(username)
-			if (current_users[username]) {
-				let msg = `Home has ${ current_users[username].length } name${ current_users[username].length > 1 ? "s" : "" } attached to it:`
-				current_users[username].forEach(function(value, index) {
-					msg += `\n ${ value[0] }, with the color of ${ value[1] }`
-				})
-				say(msg + `\n(And the perms of ${ rank_to_privilege_name(privileges[homes_of_username]) })`)
-			} else {
-				say("The specified user does not exist in the database.")
-			}
-			if (homes_of_username.length == 1) {
-				let infos = current_users[homes_of_username[0]]
-				form_userinfo(infos[0], infos[1], homes_of_username)
-			} else if (homes_of_username.length > 1) {
-				let colors = current_users[username][1]
-				form_userinfo(username, colors, homes_of_username)
-			}
+		if (zero_arguments)
+			return form_userinfo(data.nick, data.color, data.home)
+
+		let username = duck
+		let homes_of_username = find_home_by_nickname(username)
+		if (current_users[username]) {
+			let msg = `Home has ${ current_users[username].length } name${ current_users[username].length > 1 ? "s" : "" } attached to it:`
+			current_users[username].forEach(function(value, index) {
+				msg += `\n ${ value[0] }, with the color of ${ value[1] }`
+			})
+			say(msg + `\n(And the perms of ${ rank_to_privilege_name(privileges[homes_of_username]) })`)
 		} else {
-			// for them
-			form_userinfo(data.nick, data.color, data.home)
+			say("The specified user does not exist in the database.")
+		}
+
+		if (homes_of_username.length == 1) {
+			let infos = current_users[homes_of_username[0]]
+			form_userinfo(infos[0], infos[1], homes_of_username)
+		} else if (homes_of_username.length > 1) {
+			let colors = current_users[username][1]
+			form_userinfo(username, colors, homes_of_username)
 		}
 	} else if (command == "evaljs" && is_dev_command) {
 		if (!check_if_this_privilege_or_higher(data.home, "Superuser"))
