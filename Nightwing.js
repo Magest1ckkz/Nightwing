@@ -87,7 +87,7 @@ let current_users = {}
 const pref = "+"
 const devpref = "+/"
 
-const mynick = `NW.js [${ pref }]`
+const mynick = `Nightwing [${ pref }]`
 const mycolor = "royalblue"
 
 const regex_pref = new RegExp(`^${ escape_regex(pref) }\\w+`, "g")
