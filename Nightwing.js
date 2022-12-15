@@ -371,7 +371,7 @@ socket.on("message", function(data) {
 	if (command == "unfreeze" && is_dev_command) {
 		if (!check_if_this_privilege_or_higher(data.home, "Superuser"))
 			return say(lang["low_rank"])
-		say(lang["low_rank"])
+		unfreeze()
 	}
 
 	if (frozen) return
