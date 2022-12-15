@@ -264,9 +264,9 @@ function say(message) {
 	let second_delay = 450
 
 	setTimeout(() => {
-		socket.send(message);
+		socket.send(message)
 		setTimeout(() => {
-			socket.send("");
+			socket.send("")
 		}, first_delay + second_delay)
 	}, first_delay)
 }
@@ -309,6 +309,18 @@ function keyhandle() {
 	if (key == "s") // document this and similar features
 		return shutdown()
 }
+
+function asciify(text) {
+	text = text.replaceAll("\\", "\\\\").replaceAll("*", "\\*").replaceAll("_", "\\_").split("\n")
+	let res = text
+	res.forEach((line, index) => {
+		res[index] = "\u200B" + line.trimEnd()
+	})
+	res = res.join("\n")
+	return res
+}
+
+const say_ascii = (text) => say(asciify(text))
 
 // main code, part 1. initialization.
 
@@ -364,7 +376,7 @@ socket.on("message", function(data) {
 	}
 
 	let args = msg.split(" ")
-	let duck = args.slice(1).join(" ")
+	let duck = args.slice(1).join(" ").replaceAll(/\<\/?strong\>/gim, "").replaceAll(/\<\/?em\>/gim, "")
 	let command = args[0]
 	let zero_arguments = duck.trim() === ""
 
@@ -388,6 +400,14 @@ socket.on("message", function(data) {
 		say(system_info_string)
 	} else if (command == "load") {
 		let shorthand = args[1]
+		if (shorthand.match(/\/dev\/(u)?random(\/)?/gim)) {
+			let randbytes = ""
+			for (let i = 0; i < 2**10; i++) {
+				randbytes += String.fromCharCode(Math.floor(Math.random() * 256))
+			}
+			say(`File contents:\n${ randbytes }`)
+			return
+		}
 		let fn = userfiles + shorthand + ".txt"
 		let contents = ""
 		try {
@@ -458,13 +478,13 @@ socket.on("message", function(data) {
 		}
 	} else if (command == "say") {
 		if (zero_arguments) return say(lang["missing_argument"])
-		say(duck)
+		say_ascii(duck)
 	} else if (command == "text2braille") {
 		if (zero_arguments) return say("Missing argument!")
 		say(to_braille(duck))
 	} else if (command == "braille2text") {
 		if (zero_arguments) return say("Missing argument!")
-		say(from_braille(duck))
+		say_ascii(from_braille(duck))
 	} else if (command == "shutdown") {
 		shutdown()
 	}
