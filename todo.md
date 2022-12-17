@@ -1,4 +1,5 @@
 ## To-Do
+- [ ] Idea: File system as a file (database, JSON or custom format).
 - [ ] Implement the system of holding the connect.
 - [ ] Add shorthands for commands.
 - [ ] Make the terminology used in the code uniform.
