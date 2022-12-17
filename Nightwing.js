@@ -75,7 +75,6 @@ let privileges = {
 
 let privileges = {}
 let blacklist = []
-let banned_words = {}
 let myhome = ""
 
 const userfiles = "./PublicData/"
@@ -98,8 +97,10 @@ const regex_pref = new RegExp(`^${ escape_regex(pref) }\\w+`, "g")
 const regex_devpref = new RegExp(`^${ escape_regex(devpref) }\\w+`, "g")
 
 const lang = {
+	"done": "Done.",
+	"failed": "Failed!",
 	"help": `\
-**Nightwing.js version 0.5**
+**Nightwing.js version 0.5.1**
 A versatile bot for trollbox.party.
 
 ${ pref }help - Show this message.
@@ -109,6 +110,7 @@ ${ pref }text2braille <text> - Convert ASCII text to Braille.
 ${ pref }braille2text <text> - Convert Braille to ASCII text.
 ${ pref }userinfo < "home" | "nick" | "id" > <appropriate data to search by> - User info, such as nickname, color, home, and local permissions.
 ${ pref }save <filename without whitespaces> <content> - Save a text file.
+${ pref }add <filename without whitespaces> <content> - Append to a text file.
 ${ pref }load <filename without whitespaces> - Load a text file.
 ${ devpref }freeze **[SUPERUSER ONLY]** - Freeze bot (stop reacting to commands).
 ${ devpref }unfreeze **[SUPERUSER ONLY]** - Unfreeze bot (continue reacting to commands).
@@ -118,7 +120,10 @@ ${ devpref }evaljs **[SUPERUSER ONLY]** - Execute JavaScript.`,
 	"err_enoent_save": "This file couldn't be saved because its name have either illegal symbols, or the file name is too long.",
 	"nothing_to_do": "Nothing to do.",
 	"wrong_format": "Wrong format!",
-	"missing_argument": "Missing argument!"
+	"missing_argument": "Missing argument!",
+	"loading_config": "Loading configurations...",
+	"saving_config": "Saving configurations...",
+	"warn_profane": "At least 1 profane word has been detected in the arguments."
 }
 
 // procedures
@@ -164,7 +169,8 @@ function load_config() {
 		Object.entries(privileges).forEach(([key, value]) => {
 			privileges[key] = privilege_key[value]
 		})
-		myhome = Object.values(privileges)[0]
+		myhome = Object.keys(privileges)[0]
+		console.log("Loaded privileges information successfully.")
 	} else if (loaded === false) {
 		privileges = {}
 		myhome = "---"
@@ -174,14 +180,15 @@ function load_config() {
 	loaded = load_obj(path_blacklist)
 	if (typeof loaded === "object") {
 		blacklist = loaded["blacklist"] // a list
+		console.log("Loaded blacklist successfully.")
 	}
 
 	loaded = load_obj(path_banned_words)
 	if (typeof loaded === "object") {
-		banned_words = {}
 		loaded["banned_words"].forEach(value => {
-			banned_words[value] = 4
+			censor.addWord(value)
 		})
+		console.log("Loaded banned words list successfully.")
 	}
 
 	return res
@@ -256,7 +263,10 @@ function unfreeze() {
 
 function shutdown() {
 	console.log("Shutting down...")
+
+	console.log(lang["saving_config"])
 	save_config()
+
 	process.exit()
 }
 
@@ -300,14 +310,18 @@ function form_keyequal() {
 function vmrun(code) {
 	let imported_readonly_globals = [
 		"console",
+		"censor",
 		// "socket.emit", // has no effect
 		// "socket.send", // has no effect
-		// "say", // code `while (true) { say(...) }` leads to a real infinite loop
+		"say", // code `while (true) { say(...) }` leads to a real infinite loop
 		// "os",
-		// "fs"
+		// "fs",
+		"btoa",
+		"atob"
 	]
 	let nevermind = new VM({
 		timeout: 1e3,
+		// sandbox: form_keyequal(imported_readonly_globals),
 		allowAsync: false // be aware of setTimeout in called functions
 	})
 	imported_readonly_globals.forEach(value => {
@@ -322,8 +336,28 @@ function keyhandle() {
 		return
 
 	let key = kbinfo.name
-	if (key == "s") // document this and similar features
-		return shutdown()
+
+	if (key == "s") { // document this and similar features
+		return shutdown()		
+	} else if (key == "u") { // document this and similar features
+		console.log(lang["loading_config"])
+		let res = load_config()
+		if (res === true) {
+			console.log(lang["done"])
+		} else {
+			console.log(lang["failed"])
+		}
+		return
+	} else if (key == "i" && kbinfo.shift) { // document this and similar features
+		console.log(lang["saving_config"])
+		let res = save_config()
+		if (res === true) {
+			console.log(lang["done"])
+		} else {
+			console.log(lang["failed"])
+		}
+		return
+	}
 }
 
 function asciify(text) {
@@ -337,12 +371,11 @@ function asciify(text) {
 }
 
 const say_ascii = (text) => say(asciify(text))
+const remove_tags = (str) => str.replaceAll(/\<\/?strong\>/gim, "").replaceAll(/\<\/?em\>/gim, "")
 
 // main code, part 1. initialization.
 
 censor.setCleanFunction((str) => Array.from(str, x => ".").join(""))
-censor.addLocale("custom", banned_words)
-censor.setLocale("custom")
 
 // Load the system info
 
@@ -361,7 +394,7 @@ let ram_info = 4
 const system_info_string = `This bot is running on ${ cpu_info } with ${ ram_info } GB of RAM.`
 delete cpu_info, ram_info
 
-console.log("Loading configurations...")
+console.log(lang["loading_config"])
 load_config()
 
 // main code, part 2. event handlers.
@@ -382,7 +415,7 @@ socket.on("message", function(data) {
 	let do_not_process = is_me || is_system || is_blocked
 	if (do_not_process) return
 
-	data.msg = he.decode(data.msg)
+	data.msg = remove_tags(he.decode(data.msg))
 	let msg = data.msg.trim()
 	let test_pref = msg.match(regex_pref)
 	let test_devpref = msg.match(regex_devpref)
@@ -397,7 +430,7 @@ socket.on("message", function(data) {
 	}
 
 	let args = msg.split(" ")
-	let duck = args.slice(1).join(" ").replaceAll(/\<\/?strong\>/gim, "").replaceAll(/\<\/?em\>/gim, "")
+	let duck = args.slice(1).join(" ")
 	let command = args[0]
 	let zero_arguments = duck.trim() === ""
 
@@ -440,11 +473,14 @@ socket.on("message", function(data) {
 			console.log(e.toString())
 		}
 		say("File contents:\n" + contents)
-	} else if (command == "save") {
+	} else if (command == "save" || command == "add") {
 		let shorthand = args[1]
 
-		if (censor.isProfane(shorthand))
-			return 
+		if (censor.isProfane(shorthand.split(" ").join(""))) {
+			console.log(lang["warn_profane"])
+			say("No")
+			return
+		}
 
 		let fn = userfiles + shorthand + ".txt"
 
@@ -452,12 +488,21 @@ socket.on("message", function(data) {
 			fs.mkdirSync(userfiles)
 		}
 
-		if (fs.existsSync(fn))
+		let can_overwrite = check_if_this_privilege_or_higher(data.home, "Moderator")
+
+		/*
+		if (fs.existsSync(fn) && !can_overwrite)
 			return say("This file already exists!")
+		*/
 
 		let contents = censor.cleanProfanity(args.slice(2).join(" "))
 		try {
-			fs.writeFileSync(fn, contents, { encoding: "utf8" })
+			if (can_overwrite && command == "save") {
+				fs.writeFileSync(fn, contents, { encoding: "utf8" })
+			} else if (command == "add") {
+				contents = "\n\u2022\n" + contents
+				fs.appendFileSync(fn, contents, { encoding: "utf8" })
+			}
 		} catch(e) {
 			if (e.code == "ENOENT") {
 				say(lang["err_enoent_save"])
@@ -505,14 +550,19 @@ socket.on("message", function(data) {
 			say(`*${ e.toString() }*`)
 		}
 	} else if (command == "say") {
-		if (zero_arguments) return say(lang["missing_argument"])
-		say_ascii(censor.cleanProfanity(duck))
+		if (zero_arguments)
+			return say(lang["missing_argument"])
+
+		if (censor.isProfane(duck))
+			console.log(lang["warn_profane"])
+
+		say(censor.cleanProfanity(duck))
 	} else if (command == "text2braille") {
 		if (zero_arguments) return say("Missing argument!")
 		say(to_braille(duck))
 	} else if (command == "braille2text") {
 		if (zero_arguments) return say("Missing argument!")
-		say_ascii(from_braille(duck))
+		say(from_braille(duck))
 	} else if (command == "shutdown") {
 		shutdown()
 	}
