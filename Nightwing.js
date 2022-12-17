@@ -427,6 +427,9 @@ socket.on("message", function(data) {
 			fs.mkdirSync(userfiles)
 		}
 
+		if (fs.existsSync(fn))
+			return say("This file already exists!")
+
 		let contents = args.slice(2).join(" ")
 		try {
 			fs.writeFileSync(fn, contents, { encoding: "utf8" })
@@ -509,6 +512,19 @@ socket.on("update users", function(data) {
 		if (home !== "trollbox")
 			current_users[username] = [username, home, color]
 	})
+})
+
+socket.on("user joined", function(data) {
+	let is_me = data.nick == mynick && (data.home == myhome || myhome == "---")
+	let should_react = check_if_this_privilege_or_higher(data.home, "Moderator") && !is_me
+	if (should_react) {
+		let nickname = he.decode(data.nick)
+		let horizontal_box_length = " Welcome back, ! ".length + nickname.length
+		let ascii = `╔${ "═".repeat(horizontal_box_length) }╗\n`
+		ascii += `║ Welcome back, ${ nickname }! ║\n`
+		ascii += `╚${ "═".repeat(horizontal_box_length) }╝`
+		say(ascii)
+	}
 })
 
 console.log("Listening to commands from now.")
