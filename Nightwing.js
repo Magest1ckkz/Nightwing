@@ -480,6 +480,10 @@ socket.on("message", function(data) {
 			console.log(lang["warn_profane"])
 			say("No")
 			return
+		} else if (shorthand.length > 256 - ".txt".length) {
+			return say("The file name is too long!")
+		} else if (!shorthand.match(/^[a-z0-9!#$%&'()+,.=@\[\] ^_`{}~-]*$/i)) {
+			return say("Illegal characters detected.")
 		}
 
 		let fn = userfiles + shorthand + ".txt"
