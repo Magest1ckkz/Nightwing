@@ -34,6 +34,8 @@ const fs = require("fs")
 const replaceAll = require("string.prototype.replaceall")
 replaceAll.shim()
 const { VM } = require("vm2")
+const { CensorSensor } = require("censor-sensor")
+const censor = new CensorSensor()
 
 // global declarations
 
@@ -71,13 +73,15 @@ let privileges = {
 }
 */
 
-// let privileges = {}
-let blacklist = {}
+let privileges = {}
+let blacklist = []
+let banned_words = {}
 let myhome = ""
 
 const userfiles = "./PublicData/"
 const path_privileges = "./privileges.json"
 const path_blacklist = "./blacklist.json"
+const path_banned_words = "./banned_words.json"
 
 let freeze_timeout_handler = false
 let frozen = false
@@ -160,7 +164,7 @@ function load_config() {
 		Object.entries(privileges).forEach(([key, value]) => {
 			privileges[key] = privilege_key[value]
 		})
-		myhome = get_key_by_value(privileges, privilege_key["Owner"])
+		myhome = Object.values(privileges)[0]
 	} else if (loaded === false) {
 		privileges = {}
 		myhome = "---"
@@ -170,10 +174,16 @@ function load_config() {
 	loaded = load_obj(path_blacklist)
 	if (typeof loaded === "object") {
 		blacklist = loaded["blacklist"] // a list
-	} else if (loaded === false) {
-		blacklist = []
-		res = false
 	}
+
+	loaded = load_obj(path_banned_words)
+	if (typeof loaded === "object") {
+		banned_words = {}
+		loaded["banned_words"].forEach(value => {
+			banned_words[value] = 4
+		})
+	}
+
 	return res
 }
 
@@ -271,6 +281,12 @@ function say(message) {
 	}, first_delay)
 }
 
+function check_connection() {
+	if (socket.disconnected === true || socket.connected === false) {
+		socket.connect()
+	}
+}
+
 function form_keyequal() {
 	// actually a useful function
 	let args = Object.values(arguments)
@@ -324,6 +340,10 @@ const say_ascii = (text) => say(asciify(text))
 
 // main code, part 1. initialization.
 
+censor.setCleanFunction((str) => Array.from(str, x => ".").join(""))
+censor.addLocale("custom", banned_words)
+censor.setLocale("custom")
+
 // Load the system info
 
 /*
@@ -358,7 +378,8 @@ console.log("Setting message event handler...")
 socket.on("message", function(data) {
 	let is_me = data.nick == mynick && (data.home == myhome || myhome == "---")
 	let is_system = data.home === "trollbox"
-	let do_not_process = is_me || is_system
+	let is_blocked = blacklist.includes(data.home)
+	let do_not_process = is_me || is_system || is_blocked
 	if (do_not_process) return
 
 	data.msg = he.decode(data.msg)
@@ -421,6 +442,10 @@ socket.on("message", function(data) {
 		say("File contents:\n" + contents)
 	} else if (command == "save") {
 		let shorthand = args[1]
+
+		if (censor.isProfane(shorthand))
+			return 
+
 		let fn = userfiles + shorthand + ".txt"
 
 		if (!fs.existsSync(userfiles)) {
@@ -430,7 +455,7 @@ socket.on("message", function(data) {
 		if (fs.existsSync(fn))
 			return say("This file already exists!")
 
-		let contents = args.slice(2).join(" ")
+		let contents = censor.cleanProfanity(args.slice(2).join(" "))
 		try {
 			fs.writeFileSync(fn, contents, { encoding: "utf8" })
 		} catch(e) {
@@ -481,7 +506,7 @@ socket.on("message", function(data) {
 		}
 	} else if (command == "say") {
 		if (zero_arguments) return say(lang["missing_argument"])
-		say_ascii(duck)
+		say_ascii(censor.cleanProfanity(duck))
 	} else if (command == "text2braille") {
 		if (zero_arguments) return say("Missing argument!")
 		say(to_braille(duck))
@@ -526,5 +551,9 @@ socket.on("user joined", function(data) {
 		say(ascii)
 	}
 })
+
+setInterval(() => {
+	check_connection()
+}, 10e3)
 
 console.log("Listening to commands from now.")
