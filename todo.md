@@ -5,7 +5,7 @@
 - [ ] Idea: File system as a file (database, JSON or custom format)
 - [X] Implement the system of holding the connect
 - [ ] Add shorthands for commands
-- [ ] Make the terminology used in the code uniform
+- [X] Make the terminology used in the code uniform
 - [ ] Pokemon database [wiki] — probably https://www.pokemon.com/us/pokedex
 - [ ] If the user's privilege is at least "superuser", then add the `✅` symbol after their nickname, home or internal ID in the menus (e.g. in the function `form_userinfo`)
 - [ ] `+userinfo` command searches for a user (or multiple users) by nickname, home, or internal ID if used with an argument
