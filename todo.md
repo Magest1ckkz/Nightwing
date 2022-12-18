@@ -1,4 +1,6 @@
 ## To-Do
+- [ ] File listing in pages
+- [ ] Vote command and list of votes in pages
 - [ ] Set up multi-line files
 - [ ] Idea: File system as a file (database, JSON or custom format).
 - [ ] Implement the system of holding the connect.
