@@ -5,6 +5,8 @@
 	licensed under MIT License
 */
 
+const __main__ = require.main === module
+
 console.log("The starting process began.")
 
 console.log("Setting functions and values...")
@@ -36,17 +38,9 @@ replaceAll.shim()
 const { VM } = require("vm2")
 const { CensorSensor } = require("censor-sensor")
 const censor = new CensorSensor()
+const Hjson = require("hjson")
 
 // global declarations
-
-/*
-const privilege_key = {
-	"User"     : 1,
-	"Moderator": 2,
-	"Superuser": 3,
-	"Owner"    : 4
-}
-*/
 
 // probably could be done in one chain
 let privilege_key = {}
@@ -63,24 +57,14 @@ for (let i = 0; i < 4; i++) {
 
 const inverse_privilege_key = swap_keys_and_values(privilege_key)
 
-/* - now this data is stored in privileges.json
-let privileges = {
-	"FFF38787JKDS3Z1E133CMEHDSMFF3M3F": privilege_key["Owner"], // Magestick
-	"EF1ASZFZ1HH24AS3CE1FASZEEHECFFMH": privilege_key["Superuser"], // Anton
-	"DS13387Z1EDSDS1ZASHDSDSE12EM2372": privilege_key["Superuser"],
-	"EDS873CZCASH3FZH3Z187ASZ4M43Z1JK": privilege_key["Superuser"], // FidgetSpinzz
-	"MASZM3CM7HMFZ3HFH21FFZ3JKFZ321DS": privilege_key["Superuser"], // cryolazulite
-}
-*/
-
 let privileges = {}
 let blacklist = []
 let myhome = ""
 
 const userfiles = "./PublicData/"
-const path_privileges = "./privileges.json"
-const path_blacklist = "./blacklist.json"
-const path_banned_words = "./banned_words.json"
+const path_privileges = "./privileges.hjson"
+const path_blacklist = "./blacklist.hjson"
+const path_banned_words = "./banned_words.hjson"
 
 let freeze_timeout_handler = false
 let frozen = false
@@ -96,11 +80,14 @@ const mycolor = "royalblue"
 const regex_pref = new RegExp(`^${ escape_regex(pref) }\\w+`, "g")
 const regex_devpref = new RegExp(`^${ escape_regex(devpref) }\\w+`, "g")
 
+let do_not_check_connection = false
+let do_not_parse_messages = false
+
 const lang = {
 	"done": "Done.",
 	"failed": "Failed!",
 	"help": `\
-**Nightwing.js version 0.5.1**
+**Nightwing.js version 0.5.2**
 A versatile bot for trollbox.party.
 
 ${ pref }help - Show this message.
@@ -108,14 +95,18 @@ ${ pref }about - Show the information about the system the bot is running on.
 ${ pref }say <message> - Say something!
 ${ pref }text2braille <text> - Convert ASCII text to Braille.
 ${ pref }braille2text <text> - Convert Braille to ASCII text.
-${ pref }userinfo < "home" | "nick" | "id" > <appropriate data to search by> - User info, such as nickname, color, home, and local permissions.
+${ pref }userinfo < "home" | "nick" | "id" > <appropriate data to search by> - User info, such as username, color, home, and local permissions.
 ${ pref }save <filename without whitespaces> <content> - Save a text file.
 ${ pref }add <filename without whitespaces> <content> - Append to a text file.
 ${ pref }load <filename without whitespaces> - Load a text file.
-${ devpref }freeze **[SUPERUSER ONLY]** - Freeze bot (stop reacting to commands).
-${ devpref }unfreeze **[SUPERUSER ONLY]** - Unfreeze bot (continue reacting to commands).
-${ devpref }shutdown **[SUPERUSER ONLY]** - Shut down the bot.
-${ devpref }evaljs **[SUPERUSER ONLY]** - Execute JavaScript.`,
+
+**Superuser and higher only commands**
+${ devpref }freeze - Freeze bot (stop reacting to commands).
+${ devpref }unfreeze - Unfreeze bot (continue reacting to commands).
+${ devpref }ban <home> - Ban a user
+${ devpref }unban <home> - Unban a user
+${ devpref }shutdown - Shut down the bot.
+${ devpref }evaljs - Execute JavaScript.`,
 	"low_rank": "\u274C You are not privileged enough to use this command.",
 	"err_enoent_save": "This file couldn't be saved because its name have either illegal symbols, or the file name is too long.",
 	"nothing_to_do": "Nothing to do.",
@@ -123,13 +114,19 @@ ${ devpref }evaljs **[SUPERUSER ONLY]** - Execute JavaScript.`,
 	"missing_argument": "Missing argument!",
 	"loading_config": "Loading configurations...",
 	"saving_config": "Saving configurations...",
-	"warn_profane": "At least 1 profane word has been detected in the arguments."
+	"warn_profane": "At least 1 profane word has been detected in the arguments.",
+	"access_denied_profane": he.decode("&#128248;&#9989; Caught you in 4k120fps")
 }
 
 // procedures
-function load_obj(fp) {
+const is_home = (str) => str.match(/[A-Z0-9]{32}/)
+
+function load_obj(fp, options = "") {
 	try {
-		return JSON.parse(fs.readFileSync(fp))
+		let loaded = fs.readFileSync(fp).toString()
+		if (options.includes("list"))
+			return Hjson.parse(loaded)
+		return Hjson.rt.parse(loaded)
 	} catch(e) {
 		// case 1: cannot access file or it does not exists
 		// case 2: bad JSON
@@ -138,12 +135,17 @@ function load_obj(fp) {
 	}
 }
 
-function save_obj(fp, obj) {
-	let res = JSON.stringify(obj, null, "\t")
+function save_obj(fp, obj, options = "") {
+	let res = ""
+	if (options.includes("list")) {
+		res = Hjson.stringify(obj, { quotes: "all", space: "\t" })
+	} else {
+		res = Hjson.rt.stringify(obj, { quotes: "all", space: "\t" })
+	}
 	let loaded_from_disk = null
 	let need_to_compare = null
 	try {
-		loaded_from_disk = fs.readFileSync(fp)
+		loaded_from_disk = fs.existsSync(fp) && fs.readFileSync(fp)
 		need_to_compare = true
 	} catch(e) {
 		need_to_compare = false
@@ -167,7 +169,8 @@ function load_config() {
 	if (typeof loaded === "object") {
 		privileges = loaded
 		Object.entries(privileges).forEach(([key, value]) => {
-			privileges[key] = privilege_key[value]
+			if (is_home(key))
+				privileges[key] = privilege_key[value]
 		})
 		myhome = Object.keys(privileges)[0]
 		console.log("Loaded privileges information successfully.")
@@ -175,9 +178,10 @@ function load_config() {
 		privileges = {}
 		myhome = "---"
 		res = false
+		console.log("Failed to load privileges information!")
 	}
 
-	loaded = load_obj(path_blacklist)
+	loaded = load_obj(path_blacklist, "list")
 	if (typeof loaded === "object") {
 		blacklist = loaded["blacklist"] // a list
 		console.log("Loaded blacklist successfully.")
@@ -185,7 +189,9 @@ function load_config() {
 
 	loaded = load_obj(path_banned_words)
 	if (typeof loaded === "object") {
+		console.log("%o", loaded)
 		loaded["banned_words"].forEach(value => {
+			console.log("%o", value)
 			censor.addWord(value)
 		})
 		console.log("Loaded banned words list successfully.")
@@ -196,11 +202,12 @@ function load_config() {
 
 function save_config() {
 	let res = true
-	Object.entries(privileges).forEach(([key, value]) => {
-		privileges[key] = rank_to_privilege_name(value)
+	Object.entries(privileges).map(([key, value]) => {
+		if (key.match(/[A-Z0-9]{32}/))
+			privileges[key] = inverse_privilege_key[value]
 	})
 	res = save_obj(path_privileges, privileges)
-	res &= save_obj(path_blacklist, {"blacklist": blacklist})
+	res = res && save_obj(path_blacklist, { "blacklist": blacklist }, "list")
 	return res
 }
 
@@ -215,11 +222,6 @@ function check_if_this_privilege_or_higher(source, needle) {
 	return false
 }
 
-function rank_to_privilege_name(level) {
-	// return get_key_by_value(privilege_key, level)
-	return inverse_privilege_key[level]
-}
-
 function form_userinfo(name, colors, homes) {
 	if (typeof colors === "string")
 		colors = [colors]
@@ -229,7 +231,7 @@ function form_userinfo(name, colors, homes) {
 		  "• Name: " + he.decode(name) +
 	    `\n• Color${ (colors.length > 1) ? "s" : "" }: ` + colors.join(", ") +
 	    `\n• Home${ (homes.length > 1) ? "s" : "" }: ` + homes.join(", ") +
-	    "\n• Permission level: " + rank_to_privilege_name(privileges[homes[0]]) // should display all of them, linked to homes
+	    "\n• Permission level: " + inverse_privilege_key[privileges[homes[0]]] // should display all of them, linked to homes
 	)
 }
 
@@ -270,7 +272,7 @@ function shutdown() {
 	process.exit()
 }
 
-function find_home_by_nickname(username) {
+function find_home_by_username(username) {
 	let found_homes = []
 	Object.entries(current_users).forEach(([key, value]) => {
 		if (value[0] == username)
@@ -292,9 +294,11 @@ function say(message) {
 }
 
 function check_connection() {
-	if (socket.disconnected === true || socket.connected === false) {
+	if (do_not_check_connection)
+		return
+
+	if (socket.disconnected === true || socket.connected === false)
 		socket.connect()
-	}
 }
 
 function form_keyequal() {
@@ -315,9 +319,7 @@ function vmrun(code) {
 		// "socket.send", // has no effect
 		"say", // code `while (true) { say(...) }` leads to a real infinite loop
 		// "os",
-		// "fs",
-		"btoa",
-		"atob"
+		// "fs"
 	]
 	let nevermind = new VM({
 		timeout: 1e3,
@@ -371,7 +373,7 @@ function asciify(text) {
 }
 
 const say_ascii = (text) => say(asciify(text))
-const remove_tags = (str) => str.replaceAll(/\<\/?strong\>/gim, "").replaceAll(/\<\/?em\>/gim, "")
+const remove_tags = (str) => str.replaceAll(/\<\/?[a-z]+\>/gim, "")
 
 // main code, part 1. initialization.
 
@@ -398,216 +400,282 @@ console.log(lang["loading_config"])
 load_config()
 
 // main code, part 2. event handlers.
-console.log("Setting keyboard event handler...")
-keypress(process.stdin)
-process.stdin.on("keypress", keyhandle)
-process.stdin.setRawMode(true)
-process.stdin.resume()
 
-console.log("Authenticating...")
-socket.emit("user joined", mynick, mycolor)
+if (__main__) {
+	console.log("Setting keyboard event handler...")
+	keypress(process.stdin)
+	process.stdin.on("keypress", keyhandle)
+	process.stdin.setRawMode(true)
+	process.stdin.resume()
 
-console.log("Setting message event handler...")
-socket.on("message", function(data) {
-	let is_me = data.nick == mynick && (data.home == myhome || myhome == "---")
-	let is_system = data.home === "trollbox"
-	let is_blocked = blacklist.includes(data.home)
-	let do_not_process = is_me || is_system || is_blocked
-	if (do_not_process) return
+	console.log("Authenticating...")
+	socket.emit("user joined", mynick, mycolor)
 
-	data.msg = remove_tags(he.decode(data.msg))
-	let msg = data.msg.trim()
-	let test_pref = msg.match(regex_pref)
-	let test_devpref = msg.match(regex_devpref)
-	let is_dev_command = false
-	if (test_devpref) {
-		is_dev_command = true
-		msg = msg.slice(devpref.length)
-	} else if (test_pref) {
-		msg = msg.slice(pref.length)
-	} else {
-		return // it's not a command, ignore
-	}
+	console.log("Setting message event handler...")
 
-	let args = msg.split(" ")
-	let duck = args.slice(1).join(" ")
-	let command = args[0]
-	let zero_arguments = duck.trim() === ""
-
-	if (command == "unfreeze" && is_dev_command) {
-		if (!check_if_this_privilege_or_higher(data.home, "Superuser"))
-			return say(lang["low_rank"])
-		unfreeze()
-	}
-
-	if (frozen) return
-
-	if (command == "freeze" && is_dev_command) {
-		if (!check_if_this_privilege_or_higher(data.home, "Superuser"))
-			return say(lang["low_rank"])
-		freeze()
-	}
-
-	if (command == "help") {
-		say(lang["help"])
-	} else if (command == "about") {
-		say(system_info_string)
-	} else if (command == "load") {
-		let shorthand = args[1]
-		if (shorthand.match(/\/dev\/(u)?random(\/)?/gim)) {
-			let randbytes = ""
-			for (let i = 0; i < 2**10; i++) {
-				randbytes += String.fromCharCode(Math.floor(Math.random() * 256))
-			}
-			say(`File contents:\n${ randbytes }`)
+	socket.on("message", function(data) {
+		if (do_not_parse_messages)
 			return
-		}
-		let fn = userfiles + shorthand + ".txt"
-		let contents = ""
-		try {
-			contents = fs.readFileSync(fn, { encoding: "utf8" })
-		} catch(e) {
-			if (e.code == "ENOENT") {
-				say(`man there's literally no "${ args[1] }" file`)
-			}
-			console.log(e.toString())
-		}
-		say("File contents:\n" + contents)
-	} else if (command == "save" || command == "add") {
-		let shorthand = args[1]
 
-		if (censor.isProfane(shorthand.split(" ").join(""))) {
-			console.log(lang["warn_profane"])
-			say("No")
-			return
-		} else if (shorthand.length > 256 - ".txt".length) {
-			return say("The file name is too long!")
-		} else if (!shorthand.match(/^[a-z0-9!#$%&'()+,.=@\[\] ^_`{}~-]*$/i)) {
-			return say("Illegal characters detected.")
-		}
+		let is_me = data.nick == mynick && (data.home == myhome || myhome == "---")
+		let is_system = data.home === "trollbox"
+		let is_blocked = blacklist.includes(data.home)
+		let do_not_process = is_me || is_system || is_blocked
 
-		let fn = userfiles + shorthand + ".txt"
-
-		if (!fs.existsSync(userfiles)) {
-			fs.mkdirSync(userfiles)
-		}
-
-		let can_overwrite = check_if_this_privilege_or_higher(data.home, "Moderator")
-
-		/*
-		if (fs.existsSync(fn) && !can_overwrite)
-			return say("This file already exists!")
-		*/
-
-		let contents = censor.cleanProfanity(args.slice(2).join(" "))
-		try {
-			if (can_overwrite && command == "save") {
-				fs.writeFileSync(fn, contents, { encoding: "utf8" })
-			} else if (command == "add") {
-				contents = "\n\u2022\n" + contents
-				fs.appendFileSync(fn, contents, { encoding: "utf8" })
-			}
-		} catch(e) {
-			if (e.code == "ENOENT") {
-				say(lang["err_enoent_save"])
-			}
-			console.log(e.toString())
-		}
-		say(`File saved! Use "+load ${ shorthand }" to read it!`)
-	} else if (command == "userinfo") {
-		return say("W.I.P.") // remove this line if the work is done
-		/* ================================================================== *
-			Needs a refactor and adding the new features according to the
-			specification in the "help" manual.
-		* ================================================================== */
-		if (zero_arguments)
-			return form_userinfo(data.nick, data.color, data.home)
-
-		let username = duck
-		let homes_of_username = find_home_by_nickname(username)
-		if (current_users[username]) {
-			let msg = `Home has ${ current_users[username].length } name${ current_users[username].length > 1 ? "s" : "" } attached to it:`
-			current_users[username].forEach(function(value, index) {
-				msg += `\n ${ value[0] }, with the color of ${ value[1] }`
+		if (data.home == "trollbox" && data.msg.match(/you have exceeded the maximum/gim)) {
+			console.log("trollbox.party: " + he.decode(data.msg))
+			socket.disconnect()
+			do_not_check_connection = true
+			do_not_parse_messages = true
+			setTimeout(() => {
+				socket.connect()
+				do_not_parse_messages = true
+				setTimeout(() => {
+					do_not_check_connection = false
+				}, 3e3)
 			})
-			say(msg + `\n(And the perms of ${ rank_to_privilege_name(privileges[homes_of_username]) })`)
+		}
+
+		if (do_not_process) return
+
+		data.msg = remove_tags(he.decode(data.msg))
+		let msg = data.msg.trim()
+		let test_pref = msg.match(regex_pref)
+		let test_devpref = msg.match(regex_devpref)
+		let is_dev_command = false
+		if (test_devpref) {
+			is_dev_command = true
+			msg = msg.slice(devpref.length)
+		} else if (test_pref) {
+			msg = msg.slice(pref.length)
 		} else {
-			say("The specified user does not exist in the database.")
+			return // it's not a command, ignore
 		}
 
-		if (homes_of_username.length == 1) {
-			let infos = current_users[homes_of_username[0]]
-			form_userinfo(infos[0], infos[1], homes_of_username)
-		} else if (homes_of_username.length > 1) {
-			let colors = current_users[username][1]
-			form_userinfo(username, colors, homes_of_username)
+		let args = msg.split(" ")
+		let duck = args.slice(1).join(" ")
+		let command = args[0]
+		let zero_arguments = duck.trim() === ""
+
+		if (command == "unfreeze" && is_dev_command) {
+			if (!check_if_this_privilege_or_higher(data.home, "Superuser"))
+				return say(lang["low_rank"])
+			unfreeze()
 		}
-	} else if (command == "evaljs" && is_dev_command) {
-		if (!check_if_this_privilege_or_higher(data.home, "Superuser"))
-			return say(lang["low_rank"])
-		if (zero_arguments)
-			return say(lang["wrong_format"])
-		try {
-			let result = vmrun(duck)
-			say(`> ${ result }`)
-		} catch (e) {
-			say(`*${ e.toString() }*`)
+
+		if (frozen) return
+
+		if (command == "freeze" && is_dev_command) {
+			if (!check_if_this_privilege_or_higher(data.home, "Superuser"))
+				return say(lang["low_rank"])
+			freeze()
 		}
-	} else if (command == "say") {
-		if (zero_arguments)
-			return say(lang["missing_argument"])
 
-		if (censor.isProfane(duck))
-			console.log(lang["warn_profane"])
-
-		say(censor.cleanProfanity(duck))
-	} else if (command == "text2braille") {
-		if (zero_arguments) return say("Missing argument!")
-		say(to_braille(duck))
-	} else if (command == "braille2text") {
-		if (zero_arguments) return say("Missing argument!")
-		say(from_braille(duck))
-	} else if (command == "shutdown") {
-		shutdown()
-	}
-})
-
-socket.on("update users", function(data) {
-	current_users = {}
-	Object.entries(data).forEach(([key, entry]) => {
-		let username = ""
-		let home = ""
-		let color = ""
-		Object.entries(entry).forEach(([key, value]) => {
-			let res = he.decode(value)
-			if (key == "nick") {
-				username = res
-			} else if (key == "home") {
-				home = res
-			} else if (key == "color") {
-				color = res
+		if (command == "help" && !is_dev_command) {
+			say(lang["help"])
+		} else if (command == "about" && !is_dev_command) {
+			say(system_info_string)
+		} else if (command == "load" && !is_dev_command) {
+			let shorthand = args[1]
+			if (shorthand.match(/\/dev\/(u)?random(\/)?/gim)) {
+				let randbytes = ""
+				for (let i = 0; i < 2**10; i++) {
+					randbytes += String.fromCharCode(Math.floor(Math.random() * 256))
+				}
+				say(`File contents:\n${ randbytes }`)
+				return
 			}
-		})
-		if (home !== "trollbox")
-			current_users[username] = [username, home, color]
+			let fn = userfiles + shorthand + ".txt"
+			let contents = ""
+			try {
+				contents = fs.readFileSync(fn, { encoding: "utf8" })
+			} catch(e) {
+				if (e.code == "ENOENT") {
+					say(`man there's literally no "${ args[1] }" file`)
+				}
+				console.log(e.toString())
+			}
+			say("File contents:\n" + contents)
+		} else if ((command == "save" || command == "add") && !is_dev_command) {
+			let shorthand = args[1]
+			let contents = args.slice(2).join(" ")
+
+			if (contents.trim() === "") {
+				return say("The file is not saved because no content was specified.")
+			} else if (censor.isProfaneIsh(shorthand) || censor.isProfaneIsh(contents)) {
+				console.log(lang["warn_profane"])
+				say(lang["access_denied_profane"])
+				return
+			} else if (shorthand.length > 256 - ".txt".length) {
+				return say("The file name is too long!")
+			} else if (!shorthand.match(/^[a-z0-9!#$%&'()+,.=@\[\] ^_`{}~-]*$/i)) {
+				return say("Illegal characters detected.")
+			}
+
+			let fn = userfiles + shorthand + ".txt"
+
+			if (!fs.existsSync(userfiles)) {
+				fs.mkdirSync(userfiles)
+			}
+
+			let can_overwrite = check_if_this_privilege_or_higher(data.home, "Moderator")
+
+			/*
+			if (fs.existsSync(fn) && !can_overwrite)
+				return say("This file already exists!")
+			*/
+
+			let file_exists = fs.existsSync(fn)
+			try {
+				if (command == "save" && (can_overwrite || !file_exists)) {
+					if (file_exists)
+						console.log("Overwriting that file...")
+					fs.writeFileSync(fn, contents, { encoding: "utf8" })
+				} else if (command == "add" || command == "save") {
+					if (file_exists)
+						contents = "\n" + contents
+					fs.appendFileSync(fn, contents, { encoding: "utf8" })
+				}
+				console.log("Saved file: %s", fn)
+			} catch(e) {
+				if (e.code == "ENOENT") {
+					say(lang["err_enoent_save"])
+				} else if (e.code == "EPERM") {
+					say(`This file is marked as read-only. Unable to save with the file name **${ shorthand }**.`)
+				}
+				console.log(e.toString())
+			}
+			if (fs.existsSync(fn)) {
+				say(`File saved! Use "+load ${ shorthand }" to read it!`)
+			} else {
+				say("An internal error occurred. Please tell the owner to check logs.")
+			}
+		} else if (command == "userinfo" && !is_dev_command) {
+			// return say("W.I.P.") // remove this line if the work is done
+			/* ================================================================== *
+				Needs a refactor and adding the new features according to the
+				specification in the "help" manual.
+			* ================================================================== */
+			if (zero_arguments)
+				return form_userinfo(data.nick, data.color, data.home)
+
+			let search_mode = args[0]
+			if (search_mode == "home" && is_home(args[1])) {
+				let homes_of_username = args[1]
+			} else if (search_mode == "nick") {
+				let username = args[1]
+				let homes_of_username = find_home_by_username(username)
+			} else if (search_mode == "id") {
+				return say("W.I.P.")
+			} else {
+				return say(lang["wrong_format"])
+			}
+
+			if (current_users[username]) {
+				let msg = `Home has ${ current_users[username].length } name${ current_users[username].length > 1 ? "s" : "" } attached to it:`
+				current_users[username].forEach(function(value, index) {
+					msg += `\n ${ value[0] }, with the color of ${ value[1] }`
+				})
+				say(msg + `\n(And the perms of ${ inverse_privilege_key[privileges[homes_of_username]] })`)
+			} else if (search_mode == "nick") {
+				if (blacklist[spec_home]) {
+					let msg = `This home is blocked from using this bot.`
+					say(msg)
+				} else if (homes_of_username.some(value => blacklist.includes(spec_home))) {
+					
+				} else {
+					say("The specified user does not exist in the database.")
+				}
+			}
+
+			if (homes_of_username.length == 1) {
+				let infos = current_users[homes_of_username[0]]
+				form_userinfo(infos[0], infos[1], homes_of_username)
+			} else if (homes_of_username.length > 1) {
+				let colors = current_users[username][1]
+				form_userinfo(username, colors, homes_of_username)
+			}
+		} else if (command == "evaljs" && is_dev_command) {
+			if (!check_if_this_privilege_or_higher(data.home, "Superuser"))
+				return say(lang["low_rank"])
+			if (zero_arguments)
+				return say(lang["wrong_format"])
+			try {
+				let result = vmrun(duck)
+				say(`> ${ result }`)
+			} catch (e) {
+				say(`*${ e.toString() }*`)
+			}
+		} else if (command == "say" && !is_dev_command) {
+			if (zero_arguments)
+				return say(lang["missing_argument"])
+
+			if (censor.isProfane(duck))
+				console.log(lang["warn_profane"])
+
+			say(censor.cleanProfanity(duck))
+		} else if (command == "text2braille" && !is_dev_command) {
+			if (zero_arguments) return say("Missing argument!")
+			say(to_braille(duck))
+		} else if (command == "braille2text" && !is_dev_command) {
+			if (zero_arguments) return say("Missing argument!")
+			say(from_braille(duck))
+		} else if (command == "shutdown" && is_dev_command) {
+			shutdown()
+		} else if (command == "ban") {
+			if (!blacklist.includes(duck)) {
+				ban_user(duck)
+				say("Banned the user.")
+			} else [
+				say("The user is already banned.")
+			]
+		} else if (command == "unban") {
+			if (blacklist.includes(duck)) {
+				unban_user(duck)
+				say("Unbanned the user.")
+			} else {
+				say(lang["nothing_to_do"])
+			}
+		}
 	})
-})
 
-socket.on("user joined", function(data) {
-	let is_me = data.nick == mynick && (data.home == myhome || myhome == "---")
-	let should_react = check_if_this_privilege_or_higher(data.home, "Moderator") && !is_me
-	if (should_react) {
-		let nickname = he.decode(data.nick)
-		let horizontal_box_length = " Welcome back, ! ".length + nickname.length
-		let ascii = `╔${ "═".repeat(horizontal_box_length) }╗\n`
-		ascii += `║ Welcome back, ${ nickname }! ║\n`
-		ascii += `╚${ "═".repeat(horizontal_box_length) }╝`
-		say(ascii)
-	}
-})
+	socket.on("update users", function(data) {
+		current_users = {}
+		Object.entries(data).forEach(([key, entry]) => {
+			let username = ""
+			let home = ""
+			let color = ""
+			Object.entries(entry).forEach(([key, value]) => {
+				let res = he.decode(value)
+				if (key == "nick") {
+					username = res
+				} else if (key == "home") {
+					home = res
+				} else if (key == "color") {
+					color = res
+				}
+			})
+			if (home !== "trollbox")
+				current_users[username] = [username, home, color]
+		})
+	})
 
-setInterval(() => {
-	check_connection()
-}, 10e3)
+	socket.on("user joined", function(data) {
+		let is_me = data.nick == mynick && (data.home == myhome || myhome == "---")
+		let should_react = check_if_this_privilege_or_higher(data.home, "Moderator") && !is_me
+		if (should_react) {
+			let username = he.decode(data.nick)
+			let horizontal_box_length = " Welcome back, ! ".length + username.length
+			let ascii = `╔${ "═".repeat(horizontal_box_length) }╗\n`
+			ascii += `║ Welcome back, ${ username }! ║\n`
+			ascii += `╚${ "═".repeat(horizontal_box_length) }╝`
+			say(ascii)
+		}
+	})
 
-console.log("Listening to commands from now.")
+	setInterval(() => {
+		check_connection()
+	}, 10e3)
+
+	console.log("Listening to commands from now.")
+}
