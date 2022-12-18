@@ -1,4 +1,5 @@
 ## To-Do
+- [ ] Set up multi-line files
 - [ ] Idea: File system as a file (database, JSON or custom format).
 - [ ] Implement the system of holding the connect.
 - [ ] Add shorthands for commands.
