@@ -1,2 +1,2 @@
 ## Notes
-- [X] It would also be necessary to add an option to tell the user that if the file name contains invalid characters, they will be replaced. In addition, if the file name length exceeds 256, it cannot be saved in the NTFS file system.
+* For `socket.io-client`: The bot will react to commands even if it is there as a logged user (before an "user joined" event). To react to a command, it will automatically "join" with the parameters set in the (last?) call of `socket.emit("user joined", ...)`, as they will be saved internally.
