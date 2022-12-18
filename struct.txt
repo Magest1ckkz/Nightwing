@@ -14,5 +14,6 @@ For running the bot:
 | . /PublicData†
 | :: *.txt‡
 | NW.js
+| banned_words.json‡
+| blacklist.json‡
 | privileges.json†
-| blacklist.json†
