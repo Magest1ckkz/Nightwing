@@ -619,8 +619,14 @@ if (__main__) {
 			if (zero_arguments) return say("Missing argument!")
 			say(from_braille(duck))
 		} else if (command == "shutdown" && is_dev_command) {
+			if (!check_if_this_privilege_or_higher(data.home, "Superuser"))
+				return say(lang["low_rank"])
+
 			shutdown()
 		} else if (command == "ban") {
+			if (!check_if_this_privilege_or_higher(data.home, "Superuser"))
+				return say(lang["low_rank"])
+
 			if (!blacklist.includes(duck)) {
 				ban_user(duck)
 				say("Banned the user.")
@@ -628,6 +634,9 @@ if (__main__) {
 				say("The user is already banned.")
 			]
 		} else if (command == "unban") {
+			if (!check_if_this_privilege_or_higher(data.home, "Superuser"))
+				return say(lang["low_rank"])
+
 			if (blacklist.includes(duck)) {
 				unban_user(duck)
 				say("Unbanned the user.")
