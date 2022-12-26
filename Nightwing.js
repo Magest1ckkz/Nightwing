@@ -189,9 +189,7 @@ function load_config() {
 
 	loaded = load_obj(path_banned_words)
 	if (typeof loaded === "object") {
-		console.log("%o", loaded)
 		loaded["banned_words"].forEach(value => {
-			console.log("%o", value)
 			censor.addWord(value)
 		})
 		console.log("Loaded banned words list successfully.")
