@@ -1,7 +1,7 @@
 /*
 	Nightwing.js
 	a Node bot for trollbox.party
-	developed by Magestick, Dragsun, cryolazulite
+	developed by Nightwing.js development team
 	licensed under MIT License
 */
 
@@ -284,8 +284,9 @@ function find_home_by_username(username) {
 }
 
 function say(message) {
-	let first_delay = 700
-	let second_delay = 450
+	// let first_delay = 700
+	// let second_delay = 450
+	let first_delay = second_delay = 365
 
 	setTimeout(() => {
 		socket.send(message)
@@ -451,7 +452,7 @@ if (__main__) {
 		if (do_not_process) return
 
 		data.msg = remove_tags(he.decode(data.msg))
-		let msg = data.msg.trim()
+		let msg = data.msg
 		let test_pref = msg.match(regex_pref)
 		let test_devpref = msg.match(regex_devpref)
 		let is_dev_command = false
