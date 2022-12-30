@@ -101,6 +101,7 @@ ${ pref }add <filename without whitespaces> <content> - Append to a text file.
 ${ pref }load <filename without whitespaces> - Load a text file.
 
 **Superuser and higher only commands**
+${ devpref }uptime - Show the uptime information
 ${ devpref }freeze - Freeze bot (stop reacting to commands).
 ${ devpref }unfreeze - Unfreeze bot (continue reacting to commands).
 ${ devpref }ban <home> - Ban a user
@@ -120,6 +121,9 @@ ${ devpref }evaljs - Execute JavaScript.`,
 
 // procedures
 const is_home = (str) => str.match(/[A-Z0-9]{32}/)
+const timestamp = () => +new Date() / 1e3 | 0
+const pad_num = num => num.toString().padStart(2, "0")
+const remove_tags = (str) => str.replaceAll(/\<\/?[a-z]+\>/gim, "")
 
 function load_obj(fp, options = "") {
 	try {
@@ -370,12 +374,26 @@ function asciify(text) {
 	return res
 }
 
+function format_time(t) {
+	let src = t
+	let s = pad_num(src % 60)
+	let m = pad_num(Math.floor(src / 60) % 60)
+	let h = pad_num(Math.floor(src / 3600) % 60)
+	let d = Math.floor(src / 86400)
+	let res = [h, m, s].join(":")
+	if (d > 0) {
+		return `${ res }, day ${ d }`
+	} else {
+		return res
+	}
+}
+
 const say_ascii = (text) => say(asciify(text))
-const remove_tags = (str) => str.replaceAll(/\<\/?[a-z]+\>/gim, "")
 
 // main code, part 1. initialization.
 
 censor.setCleanFunction((str) => Array.from(str, x => ".").join(""))
+const start_time = timestamp()
 
 // Load the system info
 
@@ -473,6 +491,10 @@ if (__main__) {
 			say(lang["help"])
 		} else if (command == "about" && !is_dev_command) {
 			say(system_info_string)
+		} else if (command == "uptime" && is_dev_command) {
+			let os_uptime = format_time(os.uptime())
+			let bot_uptime = format_time(timestamp() - start_time)
+			say(`OS uptime: ${ os_uptime }\nBot uptime: ${ bot_uptime }`)
 		} else if (command == "load" && !is_dev_command) {
 			let shorthand = args[1]
 			if (shorthand.match(/\/dev\/(u)?random(\/)?/gim)) {
