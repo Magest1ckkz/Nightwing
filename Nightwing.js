@@ -375,17 +375,13 @@ function asciify(text) {
 }
 
 function format_time(t) {
-	let src = t
+	let src = Math.floor(t)
 	let s = pad_num(src % 60)
 	let m = pad_num(Math.floor(src / 60) % 60)
 	let h = pad_num(Math.floor(src / 3600) % 60)
 	let d = Math.floor(src / 86400)
-	let res = [h, m, s].join(":")
-	if (d > 0) {
-		return `${ res }, day ${ d }`
-	} else {
-		return res
-	}
+	let res = [d, h, m, s].join(":")
+	return res
 }
 
 const say_ascii = (text) => say(asciify(text))
