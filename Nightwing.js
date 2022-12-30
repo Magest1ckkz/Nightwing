@@ -414,6 +414,279 @@ load_config()
 
 // main code, part 2. event handlers.
 
+function parse_messages(data) {
+	if (do_not_parse_messages)
+		return
+
+	let is_me = data.nick == mynick && (data.home == myhome || myhome == "---")
+	let is_system = data.home === "trollbox"
+	let is_blocked = blacklist.includes(data.home)
+	let do_not_process = is_me || is_system || is_blocked
+
+	if (data.home == "trollbox" && data.msg.match(/you have exceeded the maximum/gim)) {
+		console.log("trollbox.party: " + he.decode(data.msg))
+		socket.disconnect()
+		do_not_check_connection = true
+		do_not_parse_messages = true
+		setTimeout(() => {
+			socket.connect()
+			do_not_parse_messages = true
+			setTimeout(() => {
+				do_not_check_connection = false
+			}, 3e3)
+		})
+	}
+
+	if (do_not_process) return
+
+	data.msg = remove_tags(he.decode(data.msg))
+	let msg = data.msg
+	let test_pref = msg.match(regex_pref)
+	let test_devpref = msg.match(regex_devpref)
+	let is_dev_command = false
+	if (test_devpref) {
+		is_dev_command = true
+		msg = msg.slice(devpref.length)
+	} else if (test_pref) {
+		msg = msg.slice(pref.length)
+	} else {
+		return // it's not a command, ignore
+	}
+
+	let args = msg.split(" ")
+	let duck = args.slice(1).join(" ")
+	let command = args[0]
+	let zero_arguments = duck.trim() === ""
+
+	if (command == "unfreeze" && is_dev_command) {
+		if (!check_if_this_privilege_or_higher(data.home, "Superuser"))
+			return say(lang["low_rank"])
+		unfreeze()
+	}
+
+	if (frozen) return
+
+	if (command == "freeze" && is_dev_command) {
+		if (!check_if_this_privilege_or_higher(data.home, "Superuser"))
+			return say(lang["low_rank"])
+		freeze()
+	}
+
+	if (command == "help" && !is_dev_command) {
+		say(lang["help"])
+	} else if (command == "about" && !is_dev_command) {
+		say(system_info_string)
+	} else if (command == "uptime" && is_dev_command) {
+		let os_uptime = format_time(os.uptime())
+		let bot_uptime = format_time(timestamp() - start_time)
+		say(`OS uptime: ${ os_uptime }\nBot uptime: ${ bot_uptime }`)
+	} else if (command == "load" && !is_dev_command) {
+		let shorthand = args[1]
+		if (shorthand.match(/\/dev\/(u)?random(\/)?/gim)) {
+			let randbytes = ""
+			for (let i = 0; i < 2**10; i++) {
+				randbytes += String.fromCharCode(Math.floor(Math.random() * 256))
+			}
+			say(`File contents:\n${ randbytes }`)
+			return
+		}
+		let fn = userfiles + shorthand + ".txt"
+		let contents = ""
+		try {
+			contents = fs.readFileSync(fn, { encoding: "utf8" })
+		} catch(e) {
+			if (e.code == "ENOENT") {
+				say(`man there's literally no "${ args[1] }" file`)
+			}
+			console.log(e.toString())
+		}
+		say("File contents:\n" + contents)
+	} else if ((command == "save" || command == "add") && !is_dev_command) {
+		let shorthand = args[1]
+		let contents = args.slice(2).join(" ")
+
+		if (contents.trim() === "") {
+			return say("The file is not saved because no content was specified.")
+		} else if (censor.isProfaneIsh(shorthand) || censor.isProfaneIsh(contents)) {
+			console.log(lang["warn_profane"])
+			say(lang["access_denied_profane"])
+			return
+		} else if (shorthand.length > 256 - ".txt".length) {
+			return say("The file name is too long!")
+		} else if (!shorthand.match(/^[a-z0-9!#$%&'()+,.=@\[\] ^_`{}~-]*$/i)) {
+			return say("Illegal characters detected.")
+		}
+
+		let fn = userfiles + shorthand + ".txt"
+
+		if (!fs.existsSync(userfiles)) {
+			fs.mkdirSync(userfiles)
+		}
+
+		let can_overwrite = check_if_this_privilege_or_higher(data.home, "Moderator")
+
+		/*
+		if (fs.existsSync(fn) && !can_overwrite)
+			return say("This file already exists!")
+		*/
+
+		let file_exists = fs.existsSync(fn)
+		try {
+			if (command == "save" && (can_overwrite || !file_exists)) {
+				if (file_exists)
+					console.log("Overwriting that file...")
+				fs.writeFileSync(fn, contents, { encoding: "utf8" })
+			} else if (command == "add" || command == "save") {
+				if (file_exists)
+					contents = "\n" + contents
+				fs.appendFileSync(fn, contents, { encoding: "utf8" })
+			}
+			console.log("Saved file: %s", fn)
+		} catch(e) {
+			if (e.code == "ENOENT") {
+				say(lang["err_enoent_save"])
+			} else if (e.code == "EPERM") {
+				say(`This file is marked as read-only. Unable to save with the file name **${ shorthand }**.`)
+			}
+			console.log(e.toString())
+		}
+		if (fs.existsSync(fn)) {
+			say(`File saved! Use "+load ${ shorthand }" to read it!`)
+		} else {
+			say("An internal error occurred. Please tell the owner to check logs.")
+		}
+	} else if (command == "userinfo" && !is_dev_command) {
+		// return say("W.I.P.") // remove this line if the work is done
+		/* ================================================================== *
+			Needs a refactor and adding the new features according to the
+			specification in the "help" manual.
+		* ================================================================== */
+		if (zero_arguments)
+			return form_userinfo(data.nick, data.color, data.home)
+
+		let search_mode = args[0]
+		if (search_mode == "home" && is_home(args[1])) {
+			let homes_of_username = args[1]
+		} else if (search_mode == "nick") {
+			let username = args[1]
+			let homes_of_username = find_home_by_username(username)
+		} else if (search_mode == "id") {
+			return say("W.I.P.")
+		} else {
+			return say(lang["wrong_format"])
+		}
+
+		if (current_users[username]) {
+			let msg = `Home has ${ current_users[username].length } name${ current_users[username].length > 1 ? "s" : "" } attached to it:`
+			current_users[username].forEach(function(value, index) {
+				msg += `\n ${ value[0] }, with the color of ${ value[1] }`
+			})
+			say(msg + `\n(And the perms of ${ inverse_privilege_key[privileges[homes_of_username]] })`)
+		} else if (search_mode == "nick") {
+			if (blacklist[spec_home]) {
+				let msg = `This home is blocked from using this bot.`
+				say(msg)
+			} else if (homes_of_username.some(value => blacklist.includes(spec_home))) {
+
+			} else {
+				say("The specified user does not exist in the database.")
+			}
+		}
+
+		if (homes_of_username.length == 1) {
+			let infos = current_users[homes_of_username[0]]
+			form_userinfo(infos[0], infos[1], homes_of_username)
+		} else if (homes_of_username.length > 1) {
+			let colors = current_users[username][1]
+			form_userinfo(username, colors, homes_of_username)
+		}
+	} else if (command == "evaljs" && is_dev_command) {
+		if (!check_if_this_privilege_or_higher(data.home, "Superuser"))
+			return say(lang["low_rank"])
+		if (zero_arguments)
+			return say(lang["wrong_format"])
+		try {
+			let result = vmrun(duck)
+			say(`> ${ result }`)
+		} catch (e) {
+			say(`*${ e.toString() }*`)
+		}
+	} else if (command == "say" && !is_dev_command) {
+		if (zero_arguments)
+			return say(lang["missing_argument"])
+
+		if (censor.isProfane(duck))
+			console.log(lang["warn_profane"])
+
+		say(censor.cleanProfanity(duck))
+	} else if (command == "text2braille" && !is_dev_command) {
+		if (zero_arguments) return say("Missing argument!")
+		say(to_braille(duck))
+	} else if (command == "braille2text" && !is_dev_command) {
+		if (zero_arguments) return say("Missing argument!")
+		say(from_braille(duck))
+	} else if (command == "shutdown" && is_dev_command) {
+		if (!check_if_this_privilege_or_higher(data.home, "Superuser"))
+			return say(lang["low_rank"])
+
+		shutdown()
+	} else if (command == "ban") {
+		if (!check_if_this_privilege_or_higher(data.home, "Superuser"))
+			return say(lang["low_rank"])
+
+		if (!blacklist.includes(duck)) {
+			ban_user(duck)
+			say("Banned the user.")
+		} else [
+			say("The user is already banned.")
+		]
+	} else if (command == "unban") {
+		if (!check_if_this_privilege_or_higher(data.home, "Superuser"))
+			return say(lang["low_rank"])
+
+		if (blacklist.includes(duck)) {
+			unban_user(duck)
+			say("Unbanned the user.")
+		} else {
+			say(lang["nothing_to_do"])
+		}
+	}
+}
+
+function parse_users(data) {
+	current_users = {}
+	Object.entries(data).forEach(([key, entry]) => {
+		let username = ""
+		let home = ""
+		let color = ""
+		Object.entries(entry).forEach(([key, value]) => {
+			let res = he.decode(value)
+			if (key == "nick") {
+				username = res
+			} else if (key == "home") {
+				home = res
+			} else if (key == "color") {
+				color = res
+			}
+		})
+		if (home !== "trollbox")
+			current_users[username] = [username, home, color]
+	})
+}
+
+function on_user_joined_event(data) {
+	let is_me = data.nick == mynick && (data.home == myhome || myhome == "---")
+	let should_greet = check_if_this_privilege_or_higher(data.home, "Moderator") && !is_me
+	if (should_greet) {
+		let username = he.decode(data.nick)
+		let horizontal_box_length = " Welcome back, ! ".length + username.length
+		let ascii = `╔${ "═".repeat(horizontal_box_length) }╗\n`
+		ascii += `║ Welcome back, ${ username }! ║\n`
+		ascii += `╚${ "═".repeat(horizontal_box_length) }╝`
+		say(ascii)
+	}
+}
+
 if (__main__) {
 	console.log("Setting keyboard event handler...")
 	keypress(process.stdin)
@@ -426,278 +699,9 @@ if (__main__) {
 
 	console.log("Setting message event handler...")
 
-	socket.on("message", function(data) {
-		if (do_not_parse_messages)
-			return
-
-		let is_me = data.nick == mynick && (data.home == myhome || myhome == "---")
-		let is_system = data.home === "trollbox"
-		let is_blocked = blacklist.includes(data.home)
-		let do_not_process = is_me || is_system || is_blocked
-
-		if (data.home == "trollbox" && data.msg.match(/you have exceeded the maximum/gim)) {
-			console.log("trollbox.party: " + he.decode(data.msg))
-			socket.disconnect()
-			do_not_check_connection = true
-			do_not_parse_messages = true
-			setTimeout(() => {
-				socket.connect()
-				do_not_parse_messages = true
-				setTimeout(() => {
-					do_not_check_connection = false
-				}, 3e3)
-			})
-		}
-
-		if (do_not_process) return
-
-		data.msg = remove_tags(he.decode(data.msg))
-		let msg = data.msg
-		let test_pref = msg.match(regex_pref)
-		let test_devpref = msg.match(regex_devpref)
-		let is_dev_command = false
-		if (test_devpref) {
-			is_dev_command = true
-			msg = msg.slice(devpref.length)
-		} else if (test_pref) {
-			msg = msg.slice(pref.length)
-		} else {
-			return // it's not a command, ignore
-		}
-
-		let args = msg.split(" ")
-		let duck = args.slice(1).join(" ")
-		let command = args[0]
-		let zero_arguments = duck.trim() === ""
-
-		if (command == "unfreeze" && is_dev_command) {
-			if (!check_if_this_privilege_or_higher(data.home, "Superuser"))
-				return say(lang["low_rank"])
-			unfreeze()
-		}
-
-		if (frozen) return
-
-		if (command == "freeze" && is_dev_command) {
-			if (!check_if_this_privilege_or_higher(data.home, "Superuser"))
-				return say(lang["low_rank"])
-			freeze()
-		}
-
-		if (command == "help" && !is_dev_command) {
-			say(lang["help"])
-		} else if (command == "about" && !is_dev_command) {
-			say(system_info_string)
-		} else if (command == "uptime" && is_dev_command) {
-			let os_uptime = format_time(os.uptime())
-			let bot_uptime = format_time(timestamp() - start_time)
-			say(`OS uptime: ${ os_uptime }\nBot uptime: ${ bot_uptime }`)
-		} else if (command == "load" && !is_dev_command) {
-			let shorthand = args[1]
-			if (shorthand.match(/\/dev\/(u)?random(\/)?/gim)) {
-				let randbytes = ""
-				for (let i = 0; i < 2**10; i++) {
-					randbytes += String.fromCharCode(Math.floor(Math.random() * 256))
-				}
-				say(`File contents:\n${ randbytes }`)
-				return
-			}
-			let fn = userfiles + shorthand + ".txt"
-			let contents = ""
-			try {
-				contents = fs.readFileSync(fn, { encoding: "utf8" })
-			} catch(e) {
-				if (e.code == "ENOENT") {
-					say(`man there's literally no "${ args[1] }" file`)
-				}
-				console.log(e.toString())
-			}
-			say("File contents:\n" + contents)
-		} else if ((command == "save" || command == "add") && !is_dev_command) {
-			let shorthand = args[1]
-			let contents = args.slice(2).join(" ")
-
-			if (contents.trim() === "") {
-				return say("The file is not saved because no content was specified.")
-			} else if (censor.isProfaneIsh(shorthand) || censor.isProfaneIsh(contents)) {
-				console.log(lang["warn_profane"])
-				say(lang["access_denied_profane"])
-				return
-			} else if (shorthand.length > 256 - ".txt".length) {
-				return say("The file name is too long!")
-			} else if (!shorthand.match(/^[a-z0-9!#$%&'()+,.=@\[\] ^_`{}~-]*$/i)) {
-				return say("Illegal characters detected.")
-			}
-
-			let fn = userfiles + shorthand + ".txt"
-
-			if (!fs.existsSync(userfiles)) {
-				fs.mkdirSync(userfiles)
-			}
-
-			let can_overwrite = check_if_this_privilege_or_higher(data.home, "Moderator")
-
-			/*
-			if (fs.existsSync(fn) && !can_overwrite)
-				return say("This file already exists!")
-			*/
-
-			let file_exists = fs.existsSync(fn)
-			try {
-				if (command == "save" && (can_overwrite || !file_exists)) {
-					if (file_exists)
-						console.log("Overwriting that file...")
-					fs.writeFileSync(fn, contents, { encoding: "utf8" })
-				} else if (command == "add" || command == "save") {
-					if (file_exists)
-						contents = "\n" + contents
-					fs.appendFileSync(fn, contents, { encoding: "utf8" })
-				}
-				console.log("Saved file: %s", fn)
-			} catch(e) {
-				if (e.code == "ENOENT") {
-					say(lang["err_enoent_save"])
-				} else if (e.code == "EPERM") {
-					say(`This file is marked as read-only. Unable to save with the file name **${ shorthand }**.`)
-				}
-				console.log(e.toString())
-			}
-			if (fs.existsSync(fn)) {
-				say(`File saved! Use "+load ${ shorthand }" to read it!`)
-			} else {
-				say("An internal error occurred. Please tell the owner to check logs.")
-			}
-		} else if (command == "userinfo" && !is_dev_command) {
-			// return say("W.I.P.") // remove this line if the work is done
-			/* ================================================================== *
-				Needs a refactor and adding the new features according to the
-				specification in the "help" manual.
-			* ================================================================== */
-			if (zero_arguments)
-				return form_userinfo(data.nick, data.color, data.home)
-
-			let search_mode = args[0]
-			if (search_mode == "home" && is_home(args[1])) {
-				let homes_of_username = args[1]
-			} else if (search_mode == "nick") {
-				let username = args[1]
-				let homes_of_username = find_home_by_username(username)
-			} else if (search_mode == "id") {
-				return say("W.I.P.")
-			} else {
-				return say(lang["wrong_format"])
-			}
-
-			if (current_users[username]) {
-				let msg = `Home has ${ current_users[username].length } name${ current_users[username].length > 1 ? "s" : "" } attached to it:`
-				current_users[username].forEach(function(value, index) {
-					msg += `\n ${ value[0] }, with the color of ${ value[1] }`
-				})
-				say(msg + `\n(And the perms of ${ inverse_privilege_key[privileges[homes_of_username]] })`)
-			} else if (search_mode == "nick") {
-				if (blacklist[spec_home]) {
-					let msg = `This home is blocked from using this bot.`
-					say(msg)
-				} else if (homes_of_username.some(value => blacklist.includes(spec_home))) {
-
-				} else {
-					say("The specified user does not exist in the database.")
-				}
-			}
-
-			if (homes_of_username.length == 1) {
-				let infos = current_users[homes_of_username[0]]
-				form_userinfo(infos[0], infos[1], homes_of_username)
-			} else if (homes_of_username.length > 1) {
-				let colors = current_users[username][1]
-				form_userinfo(username, colors, homes_of_username)
-			}
-		} else if (command == "evaljs" && is_dev_command) {
-			if (!check_if_this_privilege_or_higher(data.home, "Superuser"))
-				return say(lang["low_rank"])
-			if (zero_arguments)
-				return say(lang["wrong_format"])
-			try {
-				let result = vmrun(duck)
-				say(`> ${ result }`)
-			} catch (e) {
-				say(`*${ e.toString() }*`)
-			}
-		} else if (command == "say" && !is_dev_command) {
-			if (zero_arguments)
-				return say(lang["missing_argument"])
-
-			if (censor.isProfane(duck))
-				console.log(lang["warn_profane"])
-
-			say(censor.cleanProfanity(duck))
-		} else if (command == "text2braille" && !is_dev_command) {
-			if (zero_arguments) return say("Missing argument!")
-			say(to_braille(duck))
-		} else if (command == "braille2text" && !is_dev_command) {
-			if (zero_arguments) return say("Missing argument!")
-			say(from_braille(duck))
-		} else if (command == "shutdown" && is_dev_command) {
-			if (!check_if_this_privilege_or_higher(data.home, "Superuser"))
-				return say(lang["low_rank"])
-
-			shutdown()
-		} else if (command == "ban") {
-			if (!check_if_this_privilege_or_higher(data.home, "Superuser"))
-				return say(lang["low_rank"])
-
-			if (!blacklist.includes(duck)) {
-				ban_user(duck)
-				say("Banned the user.")
-			} else [
-				say("The user is already banned.")
-			]
-		} else if (command == "unban") {
-			if (!check_if_this_privilege_or_higher(data.home, "Superuser"))
-				return say(lang["low_rank"])
-
-			if (blacklist.includes(duck)) {
-				unban_user(duck)
-				say("Unbanned the user.")
-			} else {
-				say(lang["nothing_to_do"])
-			}
-		}
-	})
-
-	socket.on("update users", function(data) {
-		current_users = {}
-		Object.entries(data).forEach(([key, entry]) => {
-			let username = ""
-			let home = ""
-			let color = ""
-			Object.entries(entry).forEach(([key, value]) => {
-				let res = he.decode(value)
-				if (key == "nick") {
-					username = res
-				} else if (key == "home") {
-					home = res
-				} else if (key == "color") {
-					color = res
-				}
-			})
-			if (home !== "trollbox")
-				current_users[username] = [username, home, color]
-		})
-	})
-
-	socket.on("user joined", function(data) {
-		let is_me = data.nick == mynick && (data.home == myhome || myhome == "---")
-		let should_react = check_if_this_privilege_or_higher(data.home, "Moderator") && !is_me
-		if (should_react) {
-			let username = he.decode(data.nick)
-			let horizontal_box_length = " Welcome back, ! ".length + username.length
-			let ascii = `╔${ "═".repeat(horizontal_box_length) }╗\n`
-			ascii += `║ Welcome back, ${ username }! ║\n`
-			ascii += `╚${ "═".repeat(horizontal_box_length) }╝`
-			say(ascii)
-		}
-	})
+	socket.on("message", parse_message)
+	socket.on("update users", parse_users)
+	socket.on("user joined", on_user_joined_event)
 
 	setInterval(() => {
 		check_connection()
