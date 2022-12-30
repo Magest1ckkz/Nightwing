@@ -375,12 +375,12 @@ function asciify(text) {
 }
 
 function format_time(t) {
-	let src = Math.floor(t)
-	let s = pad_num(src % 60)
-	let m = pad_num(Math.floor(src / 60) % 60)
-	let h = pad_num(Math.floor(src / 3600) % 60)
-	let d = Math.floor(src / 86400)
-	let res = [d, h, m, s].join(":")
+	let days = Math.floor(t / 86400)
+	let as_date = new Date(t)
+	let hours = pad_num(as_date.getHours())
+	let minutes = pad_num(as_date.getMinutes())
+	let seconds = pad_num(as_date.getSeconds())
+	let res = `${ days }:${ hours }:${ minutes }:${ seconds }`
 	return res
 }
 
