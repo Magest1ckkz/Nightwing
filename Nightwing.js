@@ -310,14 +310,14 @@ function form_keyequal() {
 }
 
 function vmrun(code) {
+	// not `while (true)` safe anymore
 	let imported_readonly_globals = [
 		"console",
 		"censor",
-		// "socket.emit", // has no effect
-		// "socket.send", // has no effect
-		"say", // code `while (true) { say(...) }` leads to a real infinite loop
-		// "os",
-		// "fs"
+		"socket",
+		"say",
+		"os",
+		"fs"
 	]
 	let nevermind = new VM({
 		timeout: 1e3,
@@ -338,7 +338,7 @@ function keyhandle() {
 	let key = kbinfo.name
 
 	if (key == "s") { // document this and similar features
-		return shutdown()		
+		return shutdown()
 	} else if (key == "u") { // document this and similar features
 		console.log(lang["loading_config"])
 		let res = load_config()
@@ -580,7 +580,7 @@ if (__main__) {
 					let msg = `This home is blocked from using this bot.`
 					say(msg)
 				} else if (homes_of_username.some(value => blacklist.includes(spec_home))) {
-					
+
 				} else {
 					say("The specified user does not exist in the database.")
 				}
