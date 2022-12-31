@@ -1,5 +1,5 @@
 /*
-	Nightwing.js
+	Nightwing.js: development branch
 	a Node bot for trollbox.party
 	developed by Nightwing.js development team
 	licensed under MIT License
@@ -377,6 +377,8 @@ function asciify(text) {
 	return res
 }
 
+const say_ascii = (text) => say(asciify(text))
+
 function format_time(t) {
 	let days = Math.floor(t / 86400)
 	let as_date = new Date(t)
@@ -387,7 +389,68 @@ function format_time(t) {
 	return res
 }
 
-const say_ascii = (text) => say(asciify(text))
+function save_textfile(filepath, content, overwrite, metadata = {}) {
+	content = set_file_metadata(content, metadata)
+	if (overwrite && metadata["read-only"] == true) {
+		fs.writeFileSync(filepath, content, { encoding: "utf8" })
+	} else {
+		let loaded = fs.readFileSync(filepath, { encoding: "utf8" })
+		try {
+			let old_metadata = get_file_metadata(loaded)
+			let old_content = get_file_content(loaded)
+			if (old_metadata["read-only"] == true)
+				throw "READ_ONLY"
+			if (old_metadata["timeless"] == true)
+				delete content["last-modified"]
+		} catch {
+			let old_content = "" 
+		}
+		let res = set_file_metadata(old_content + "\n" + content, metadata)
+		fs.writeFileSync(filepath, res, { encoding: "utf8" })
+	}
+}
+
+function load_textfile(filepath) {
+	let loaded = fs.readFileSync(filepath, { encoding: "utf8" })
+	let metadata = set_file_metadata()
+	return [metadata, content]
+}
+
+function set_file_metadata(content, metadata) {
+	let generated = ""
+	if (metadata["read-only"] == true)
+		generated += "R;"
+	if (metadata["timeless"] == true)
+		generated += "t;"
+	delete metadata["read-only"]
+	delete metadata["timeless"]
+	generated += ";"
+	generated += JSON.stringify().replaceAll(/[ \t\n{}"']/g, "").replace(",", ";").toUpperCase()
+	generated = generated.trim().replaceAll(/;$/g, "")
+	return generated + "\u0000\n" + content
+}
+
+function get_file_metadata(content) {
+	let obj = {
+		"read-only": false,
+		"timeless": false
+	}
+	content.split("\u0000\n")[0].split(";").forEach(function(property) {
+		switch (property) {
+			case "R":
+				obj["read-only"] = true
+				break
+			case "t":
+				obj["timeless"] = true
+				break
+			default:
+				var tup = property.split(":")
+				obj[tup[0].trim()] = tup[1].trim()
+				break
+		}
+	})
+	return obj
+}
 
 // main code, part 1. initialization.
 
@@ -521,23 +584,32 @@ function parse_message(data) {
 
 		let fn = userfiles + shorthand + ".txt"
 
-		if (!fs.existsSync(userfiles)) {
+		if (!fs.existsSync(userfiles))
 			fs.mkdirSync(userfiles)
-		}
-
-		let can_overwrite = check_if_this_privilege_or_higher(data.home, "Moderator")
-
-		/*
-		if (fs.existsSync(fn) && !can_overwrite)
-			return say("This file already exists!")
-		*/
 
 		let file_exists = fs.existsSync(fn)
+		let can_overwrite = check_if_this_privilege_or_higher(data.home, "Moderator")
+		if (file_exists) {
+			let metadata = get_file_metadata(fs.readFileSync(fn))
+			can_overwrite = can_overwrite && metadata["read-only"] == false
+		}
+
+		if (metadata["read-only"] == false)
+			return say(`This file is marked as read-only (metadata). Unable to save with the file name **${ shorthand }**.`)
+
 		try {
 			if (command == "save" && (can_overwrite || !file_exists)) {
 				if (file_exists)
 					console.log("Overwriting that file...")
-				fs.writeFileSync(fn, contents, { encoding: "utf8" })
+
+				if (!file_exists)
+					metadata = {
+						"read-only": "false",
+						"timeless": "false",
+						"timestamp": Date.now()
+					}
+
+				save_textfile(filepath, contents, true, metadata)
 			} else if (command == "add" || command == "save") {
 				if (file_exists)
 					contents = "\n" + contents
@@ -548,7 +620,7 @@ function parse_message(data) {
 			if (e.code == "ENOENT") {
 				say(lang["err_enoent_save"])
 			} else if (e.code == "EPERM") {
-				say(`This file is marked as read-only. Unable to save with the file name **${ shorthand }**.`)
+				say(`This file is marked as read-only (FS attribute). Unable to save with the file name **${ shorthand }**.`)
 			}
 			console.log(e.toString())
 		}
