@@ -414,7 +414,7 @@ load_config()
 
 // main code, part 2. event handlers.
 
-function parse_messages(data) {
+function parse_message(data) {
 	if (do_not_parse_messages)
 		return
 
