@@ -37,7 +37,7 @@ const replaceAll = require("string.prototype.replaceall")
 replaceAll.shim()
 const { VM } = require("vm2")
 const { CensorSensor } = require("censor-sensor")
-const censor = new CensorSensor()
+// const censor = new CensorSensor()
 const Hjson = require("hjson")
 
 // global declarations
@@ -191,6 +191,7 @@ function load_config() {
 		console.log("Loaded blacklist successfully.")
 	}
 
+	/*
 	loaded = load_obj(path_banned_words)
 	if (typeof loaded === "object") {
 		loaded["banned_words"].forEach(value => {
@@ -198,6 +199,7 @@ function load_config() {
 		})
 		console.log("Loaded banned words list successfully.")
 	}
+	*/
 
 	return res
 }
@@ -318,7 +320,7 @@ function vmrun(code) {
 	// not `while (true)` safe anymore
 	let imported_readonly_globals = [
 		"console",
-		"censor",
+		// "censor",
 		"socket",
 		"say",
 		"os",
@@ -389,7 +391,7 @@ const say_ascii = (text) => say(asciify(text))
 
 // main code, part 1. initialization.
 
-censor.setCleanFunction((str) => Array.from(str, x => ".").join(""))
+// censor.setCleanFunction((str) => Array.from(str, x => ".").join(""))
 const start_time = timestamp()
 
 // Load the system info
@@ -507,7 +509,7 @@ function parse_message(data) {
 
 		if (contents.trim() === "") {
 			return say("The file is not saved because no content was specified.")
-		} else if (censor.isProfaneIsh(shorthand) || censor.isProfaneIsh(contents)) {
+		} else if (false && (censor.isProfaneIsh(shorthand) || censor.isProfaneIsh(contents))) {
 			console.log(lang["warn_profane"])
 			say(lang["access_denied_profane"])
 			return
@@ -615,10 +617,13 @@ function parse_message(data) {
 		if (zero_arguments)
 			return say(lang["missing_argument"])
 
+		/*
 		if (censor.isProfane(duck))
 			console.log(lang["warn_profane"])
+		*/
 
-		say(censor.cleanProfanity(duck))
+		// say(censor.cleanProfanity(duck))
+		say(duck)
 	} else if (command == "text2braille" && !is_dev_command) {
 		if (zero_arguments) return say("Missing argument!")
 		say(to_braille(duck))
