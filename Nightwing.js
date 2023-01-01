@@ -87,7 +87,7 @@ const lang = {
 	"done": "Done.",
 	"failed": "Failed!",
 	"help": `\
-**Nightwing.js version 0.5.2**
+**Nightwing.js version 0.5.2** [dev. branch]
 A versatile bot for trollbox.party.
 
 ${ pref }help - Show this message.
@@ -121,7 +121,7 @@ ${ devpref }evaljs - Execute JavaScript.`,
 
 // procedures
 const is_home = (str) => str.match(/[A-Z0-9]{32}/)
-const timestamp = () => +new Date() / 1e3 | 0
+const timestamp = () => Math.floor(+new Date() / 1e3)
 const pad_num = num => num.toString().padStart(2, "0")
 const remove_tags = (str) => str.replaceAll(/\<\/?[a-z]+\>/gim, "")
 
@@ -302,10 +302,14 @@ function check_connection() {
 	if (do_not_check_connection)
 		return
 
-	if (socket.connected === false) {
+	if (!socket.connected) {
+		do_not_check_connection = true
 		console.log("Server connection lost, reconnecting in 3 seconds...")
 		socket.disconnect()
-		setTimeout(() => socket.connect(), 3e3)
+		setTimeout(() => {
+			socket.connect()
+			do_not_check_connection = false
+		}, 3e3)
 	}
 }
 
@@ -783,6 +787,5 @@ if (__main__) {
 	socket.on("update users", parse_users)
 	socket.on("user joined", on_user_joined_event)
 	setInterval(() => check_connection(), 3e3)
-
-	console.log("Listening to commands from now.")
+	socket.on("connect", () => console.log("Listening to commands from now."))
 }
