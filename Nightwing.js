@@ -302,8 +302,11 @@ function check_connection() {
 	if (do_not_check_connection)
 		return
 
-	if (socket.disconnected === true || socket.connected === false)
-		socket.connect()
+	if (socket.connected === false) {
+		console.log("Server connection lost, reconnecting in 3 seconds...")
+		socket.disconnect()
+		setTimeout(() => socket.connect(), 3e3)
+	}
 }
 
 function form_keyequal() {
@@ -779,10 +782,7 @@ if (__main__) {
 	socket.on("message", parse_message)
 	socket.on("update users", parse_users)
 	socket.on("user joined", on_user_joined_event)
-
-	setInterval(() => {
-		check_connection()
-	}, 10e3)
+	setInterval(() => check_connection(), 3e3)
 
 	console.log("Listening to commands from now.")
 }
