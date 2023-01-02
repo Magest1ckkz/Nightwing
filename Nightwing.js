@@ -5,7 +5,10 @@
 	licensed under MIT License
 */
 
+"use strict"
+
 const __main__ = require.main === module
+const OFFLINE_MODE = false
 
 console.log("The starting process began.")
 
@@ -16,28 +19,46 @@ const get_key_by_value = (object, value) => Object.keys(object).find(key => obje
 const escape_regex = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") // $& means the whole matched string
 const swap_keys_and_values = (object) => Object.fromEntries(Object.entries(object).map(([key, value]) => [value, key]))
 const strmap = (the_map, string) => string.split("").map(c => the_map[c]).join("")
+let braille_alphabet = Array.from({ length: 0x283f - 0x2800 }, (_, i) => String.fromCharCode("\u2800".charCodeAt(0) + i))
 const braille_map = " A1B'K2L@CIF/MSP\"E3H9O6R^DJG>NTQ,*5<-U8V.%[$+X!&;:4\\0Z7(_?W]#Y)=".split("").reduce((o, n, i) => {
-	return o[n] = "⠀⠁⠂⠃⠄⠅⠆⠇⠈⠉⠊⠋⠌⠍⠎⠏⠐⠑⠒⠓⠔⠕⠖⠗⠘⠙⠚⠛⠜⠝⠞⠟⠠⠡⠢⠣⠤⠥⠦⠧⠨⠩⠪⠫⠬⠭⠮⠯⠰⠱⠲⠳⠴⠵⠶⠷⠸⠹⠺⠻⠼⠽⠾⠿"[i],
+	return o[n] = braille_alphabet[i],
 	       o[n.toLowerCase()] = o[n], o
 }, {})
+braille_alphabet = null
 const inverse_braille_map = swap_keys_and_values(braille_map)
 const to_braille = (string) => strmap(braille_map, string)
 const from_braille = (string) => strmap(inverse_braille_map, string)
 
 // node.js includes
 const io = require("socket.io-client")
-const socket = io("https://trollbox.party/", {
-	path: "/api/v0/si"
-})
+
+let socket = class {}
+if (!OFFLINE_MODE) {
+	socket = io("https://trollbox.party/", {
+		path: "/api/v0/si"
+	})
+} else {
+	socket.connected = true
+	socket.connect = function() {}
+	socket.disconnect = function() {}
+	socket.destroy = function() {}
+	socket.emit = function() {}
+}
+
 const he = require("he")
-const keypress = require("keypress")
+// const keypress = require("keypress")
+const readline = require("readline")
+const rli = readline.createInterface({
+	input: process.stdin,
+	output: process.stdout,
+})
 const os = require("os")
 const fs = require("fs")
 const replaceAll = require("string.prototype.replaceall")
 replaceAll.shim()
 const { VM } = require("vm2")
 const { CensorSensor } = require("censor-sensor")
-// const censor = new CensorSensor()
+const censor = new CensorSensor()
 const Hjson = require("hjson")
 
 // global declarations
@@ -116,18 +137,30 @@ ${ devpref }evaljs - Execute JavaScript.`,
 	"loading_config": "Loading configurations...",
 	"saving_config": "Saving configurations...",
 	"warn_profane": "At least 1 profane word has been detected in the arguments.",
-	"access_denied_profane": he.decode("&#128248;&#9989; Caught you in 4k120fps")
+	"access_denied_profane": he.decode("&#128248;&#9989; Caught you in 4k120fps"),
+	"err_internal": "An internal error occurred. Please tell the owner to check logs."
 }
 
 // procedures
-const is_home = (str) => str.match(/[A-Z0-9]{32}/)
+const is_home = (str) => str.match(/^[A-Z0-9]{32,32}$/)
 const timestamp = () => Math.floor(+new Date() / 1e3)
 const pad_num = num => num.toString().padStart(2, "0")
 const remove_tags = (str) => str.replaceAll(/\<\/?[a-z]+\>/gim, "")
+const is_extended_textfile = (data) => data.match(/^NW\//) && data.match(/\x00\n/)
+const set_file_metadata = (content, metadata) => form_file_metadata(metadata) + content
+const get_file_content = (data) => data.split("\u0000\n")[1]
+const clean_input_markdown = (text) => text.replaceAll(/<\/?\w+>/gi, "")
+const clean_output_markdown = (text) => text.replaceAll(/(?<!\\)(\*|_|~~)/g, "").replaceAll("\\\\", "\\")
+
+if (OFFLINE_MODE) {
+	socket.send = function(message) {
+		console.log("%s", clean_output_markdown(message))
+	}
+}
 
 function load_obj(fp, options = "") {
 	try {
-		let loaded = fs.readFileSync(fp).toString()
+		let loaded = fs.readFileSync(fp, {encoding: "utf8"})
 		if (options.includes("list"))
 			return Hjson.parse(loaded)
 		return Hjson.rt.parse(loaded)
@@ -146,19 +179,19 @@ function save_obj(fp, obj, options = "") {
 	} else {
 		res = Hjson.rt.stringify(obj, { quotes: "all", space: "\t" })
 	}
+
 	let loaded_from_disk = null
-	let need_to_compare = null
-	try {
-		loaded_from_disk = fs.existsSync(fp) && fs.readFileSync(fp)
+	let need_to_compare = false
+	if (fs.existsSync(fp)) {
+		loaded_from_disk = fs.readFileSync(fp, {encoding: "utf8"})
 		need_to_compare = true
-	} catch(e) {
-		need_to_compare = false
 	}
+
 	try {
 		if (need_to_compare && res != loaded_from_disk) {
 			// can overwrite previous file backups!
-			fs.writeFileSync(fp + ".bak", loaded_from_disk)
-			fs.writeFileSync(fp, res)
+			fs.writeFileSync(fp + ".bak", loaded_from_disk, {encoding: "utf8"})
+			fs.writeFileSync(fp, res, {encoding: "utf8"})
 		}
 		return true
 	} catch(e) {
@@ -170,7 +203,7 @@ function save_obj(fp, obj, options = "") {
 function load_config() {
 	let res = true
 	let loaded = load_obj(path_privileges)
-	if (typeof loaded === "object") {
+	if (typeof loaded === "object" && !OFFLINE_MODE) {
 		privileges = loaded
 		Object.entries(privileges).forEach(([key, value]) => {
 			if (is_home(key))
@@ -191,15 +224,14 @@ function load_config() {
 		console.log("Loaded blacklist successfully.")
 	}
 
-	/*
 	loaded = load_obj(path_banned_words)
 	if (typeof loaded === "object") {
+		censor.customDictionary = {}
 		loaded["banned_words"].forEach(value => {
-			censor.addWord(value)
+			censor.customDictionary[value] = 5
 		})
 		console.log("Loaded banned words list successfully.")
 	}
-	*/
 
 	return res
 }
@@ -216,6 +248,9 @@ function save_config() {
 }
 
 function check_if_this_privilege_or_higher(source, needle) {
+	if (OFFLINE_MODE)
+		return true
+
 	// decided to put it simply, classic <for> loop
 	for (let i = 0; i < Object.entries(privileges).length; i++) {
 		let home = Object.keys(privileges)[i]
@@ -286,15 +321,14 @@ function find_home_by_username(username) {
 }
 
 function say(message) {
-	// let first_delay = 700
-	// let second_delay = 450
-	let first_delay = second_delay = 365
+	let first_delay, second_delay = 0
+	if (!OFFLINE_MODE)
+		first_delay = second_delay = 365
 
 	setTimeout(() => {
 		socket.send(message)
-		setTimeout(() => {
-			socket.send("")
-		}, first_delay + second_delay)
+		if (!OFFLINE_MODE)
+			setTimeout(() => socket.send(""), second_delay)
 	}, first_delay)
 }
 
@@ -308,6 +342,10 @@ function check_connection() {
 		socket.disconnect()
 		setTimeout(() => {
 			socket.connect()
+			setTimeout(() => {
+				console.log("Authenticating...")
+				socket.emit("user joined", mynick, mycolor)
+			}, 375)
 			do_not_check_connection = false
 		}, 3e3)
 	}
@@ -344,25 +382,13 @@ function vmrun(code) {
 	return nevermind.run(code)
 }
 
-function keyhandle() {
-	let kbinfo = arguments[1]
-	if (!kbinfo)
+function keyhandle(line) {
+	line = line.trim()
+
+	if (line == "")
 		return
 
-	let key = kbinfo.name
-
-	if (key == "s") { // document this and similar features
-		return shutdown()
-	} else if (key == "u") { // document this and similar features
-		console.log(lang["loading_config"])
-		let res = load_config()
-		if (res === true) {
-			console.log(lang["done"])
-		} else {
-			console.log(lang["failed"])
-		}
-		return
-	} else if (key == "i" && kbinfo.shift) { // document this and similar features
+	if (line.match(/^c(onf(ig)?)? s(ave)?$/i)) { // document this and similar features
 		console.log(lang["saving_config"])
 		let res = save_config()
 		if (res === true) {
@@ -370,7 +396,28 @@ function keyhandle() {
 		} else {
 			console.log(lang["failed"])
 		}
-		return
+	} else if (line.match(/^c(onf(ig)?)? (u(pdate)?|r(eload|l))$/i)) { // document this and similar features
+		console.log(lang["loading_config"])
+		let res = load_config()
+		if (res === true) {
+			console.log(lang["done"])
+		} else {
+			console.log(lang["failed"])
+		}
+	} else if (line.match(/^(say|send) /i)) {
+		let msg = line.trim().split(" ").splice(1).join(" ")
+		socket.send(msg)
+		console.log("Sent the message from the prompt!")
+	} else if (line.match(/^(s(top)?|q(uit)?|exit)$/i)) { // document this and similar features
+		shutdown()
+	} else {
+		// internal command parse
+		parse_message({
+			"nick": "Owner",
+			"home": "",
+			"color": "",
+			"msg": line
+		})
 	}
 }
 
@@ -399,69 +446,88 @@ function format_time(t) {
 function save_textfile(filepath, content, overwrite, metadata = {}) {
 	content = set_file_metadata(content, metadata)
 	if (overwrite && metadata["read-only"] == true) {
-		fs.writeFileSync(filepath, content, { encoding: "utf8" })
+		fs.writeFileSync(filepath, content, {encoding: "utf8"})
 	} else {
-		let loaded = fs.readFileSync(filepath, { encoding: "utf8" })
-		try {
+		if (fs.existsSync(filepath)) {
+			let loaded = fs.readFileSync(filepath, {encoding: "utf8"})
 			let old_metadata = get_file_metadata(loaded)
 			let old_content = get_file_content(loaded)
 			if (old_metadata["read-only"] == true)
 				throw "READ_ONLY"
 			if (old_metadata["timeless"] == true)
 				delete content["last-modified"]
-		} catch {
-			let old_content = "" 
+			content = old_content + "\n" + content
 		}
-		let res = set_file_metadata(old_content + "\n" + content, metadata)
-		fs.writeFileSync(filepath, res, { encoding: "utf8" })
+		let res = set_file_metadata(content, metadata)
+		fs.writeFileSync(filepath, res, {encoding: "utf8"})
 	}
 }
 
 function load_textfile(filepath) {
-	let loaded = fs.readFileSync(filepath, { encoding: "utf8" })
-	let metadata = set_file_metadata()
-	return [metadata, content]
+	if (!fs.existsSync(filepath))
+		return false
+
+	let loaded = fs.readFileSync(filepath, {encoding: "utf8"})
+
+	let metadata = {}
+	let load_metadata = get_file_metadata(loaded)
+	if (typeof load_metadata === "object")
+		metadata = load_metadata
+
+	let data = loaded
+	if (is_extended_textfile(data)) {
+		data = get_file_content(data)
+	} else {
+		console.log("Reading a plain text file.")
+	}
+
+	return [metadata, data]
 }
 
-function set_file_metadata(content, metadata) {
-	let generated = ""
-	if (metadata["read-only"] == true)
-		generated += "R;"
-	if (metadata["timeless"] == true)
-		generated += "t;"
-	delete metadata["read-only"]
-	delete metadata["timeless"]
-	generated += ";"
-	generated += JSON.stringify().replaceAll(/[ \t\n{}"']/g, "").replace(",", ";").toUpperCase()
-	generated = generated.trim().replaceAll(/;$/g, "")
-	return generated + "\u0000\n" + content
+function form_file_metadata(metadata) {
+	console.log("called >>> form_file_metadata(%o)", metadata)
+	if (!metadata["read-only"])
+		delete metadata["read-only"]
+	if (!metadata["timeless"])
+		delete metadata["timeless"]
+
+	let generated = "NW/"
+	generated += JSON.stringify(metadata).replaceAll(/[ \t\n{}"']/g, "")
+		.replaceAll(",", ";").replaceAll("true", "1").replaceAll("false", "0")
+	generated += "\u0000\n"
+	return generated
 }
 
-function get_file_metadata(content) {
+function get_file_metadata(data) {
 	let obj = {
 		"read-only": false,
-		"timeless": false
+		"timeless": false,
+		"last-modified": false
 	}
-	content.split("\u0000\n")[0].split(";").forEach(function(property) {
-		switch (property) {
-			case "R":
-				obj["read-only"] = true
-				break
-			case "t":
-				obj["timeless"] = true
-				break
-			default:
-				var tup = property.split(":")
-				obj[tup[0].trim()] = tup[1].trim()
-				break
+
+	if (!is_extended_textfile(data))
+		return false // it's not an extended text file
+
+	data = data.slice("NW/".length).split("\u0000\n")[0].replaceAll(" ", "")
+		.split(";")
+	data.forEach(function(property) {
+		var tup = property.split(":")
+		if (tup[1].match(/[01]{1,1}/)) {
+			tup[1] = !!+tup[1]
+		} else if (tup[0] == "last-modified") {
+			tup[1] = +tup[1]
 		}
+		obj[tup[0]] = tup[1]
 	})
+
 	return obj
 }
 
 // main code, part 1. initialization.
 
-// censor.setCleanFunction((str) => Array.from(str, x => ".").join(""))
+censor.disableTier(1)
+censor.disableTier(2)
+censor.setCleanFunction((str) => Array.from(str, x => ".").join(""))
 const start_time = timestamp()
 
 // Load the system info
@@ -470,7 +536,7 @@ const start_time = timestamp()
 	let gigabytes = 1024 ** 3
 	let cpu_info = os.cpus()[0]["model"]
 	let ram_info = Math.ceil(os.totalmem() / gigabytes)
-	delete gigabytes
+	gigabytes = null
 */
 
 // Placeholders
@@ -479,7 +545,7 @@ let ram_info = 4
 // ------------
 
 const system_info_string = `This bot is running on ${ cpu_info } with ${ ram_info } GB of RAM.`
-delete cpu_info, ram_info
+cpu_info = ram_info = null
 
 console.log(lang["loading_config"])
 load_config()
@@ -490,12 +556,14 @@ function parse_message(data) {
 	if (do_not_parse_messages)
 		return
 
-	let is_me = data.nick == mynick && (data.home == myhome || myhome == "---")
+	let is_me = !OFFLINE_MODE && (data.nick == mynick && (data.home == myhome || myhome == "---"))
 	let is_system = data.home === "trollbox"
 	let is_blocked = blacklist.includes(data.home)
 	let do_not_process = is_me || is_system || is_blocked
 
-	if (data.home == "trollbox" && data.msg.match(/you have exceeded the maximum/gim)) {
+	if (data.home == "trollbox" &&
+		data.msg.match(/you have exceeded the maximum/gim))
+	{
 		console.log("trollbox.party: " + he.decode(data.msg))
 		socket.disconnect()
 		do_not_check_connection = true
@@ -544,45 +612,74 @@ function parse_message(data) {
 		freeze()
 	}
 
-	if (command == "help" && !is_dev_command) {
+	if (command == "help") {
 		say(lang["help"])
-	} else if (command == "about" && !is_dev_command) {
+	} else if (command == "about") {
 		say(system_info_string)
-	} else if (command == "uptime" && is_dev_command) {
+	} else if (command == "uptime") {
 		let os_uptime = format_time(os.uptime())
 		let bot_uptime = format_time(timestamp() - start_time)
 		say(`OS uptime: ${ os_uptime }\nBot uptime: ${ bot_uptime }`)
-	} else if (command == "load" && !is_dev_command) {
+	} else if (command == "load") {
 		let shorthand = args[1]
 		if (shorthand.match(/\/dev\/(u)?random(\/)?/gim)) {
 			let randbytes = ""
-			for (let i = 0; i < 2**10; i++) {
+			for (let i = 0; i < 2 ** 10; i++) {
 				randbytes += String.fromCharCode(Math.floor(Math.random() * 256))
 			}
 			say(`File contents:\n${ randbytes }`)
 			return
 		}
 		let fn = userfiles + shorthand + ".txt"
-		let contents = ""
+
+		if (!fs.existsSync(fn))
+			say(`man there's literally no "${ shorthand }" file`)
+
 		try {
-			contents = fs.readFileSync(fn, { encoding: "utf8" })
-		} catch(e) {
-			if (e.code == "ENOENT") {
-				say(`man there's literally no "${ args[1] }" file`)
+			let loaded = load_textfile(fn)
+			let metadata = loaded[0]
+			let contents = loaded[1]
+			let attribute_str = ["[ ] Read-only", "[ ] Timeless"]
+			let extended_textfile_props = ""
+			if (typeof metadata === "object") {
+				let fs_attribute_readonly = false
+				try {
+					fs.accessSync(fn, fs.constants.W_OK)
+				} catch(err) {
+					fs_attribute_readonly = true
+				}
+
+				if (metadata["read-only"] || fs_attribute_readonly)
+					attribute_str[0] = "[X] Read-only"
+
+				if (metadata["timeless"])
+					attribute_str[1] = "[X] Timeless"
+				attribute_str = attribute_str.join(" | ")
+				let date_str = ""
+				if (!metadata["timeless"] &&
+					metadata["last-modified"] !== undefined)
+				{
+					date_str = new Date(metadata["last-modified"]).toISOString()
+					date_str = `Last modified: ${ date_str }\n`
+				}
+				extended_textfile_props = `Attributes: ${ attribute_str }\n${ date_str }`
 			}
-			console.log(e.toString())
+			let res = `File name: ${ shorthand }\n${ extended_textfile_props }Contents:\n${ contents }`
+			say(res)
+		} catch(e) {
+			//~ console.log(e.toString())
+			console.log(e)
+			say(lang["err_internal"])
 		}
-		say("File contents:\n" + contents)
-	} else if ((command == "save" || command == "add") && !is_dev_command) {
+	} else if (command == "save" || command == "add") {
 		let shorthand = args[1]
 		let contents = args.slice(2).join(" ")
 
-		if (contents.trim() === "") {
+		if (contents === "") {
 			return say("The file is not saved because no content was specified.")
 		} else if (false && (censor.isProfaneIsh(shorthand) || censor.isProfaneIsh(contents))) {
 			console.log(lang["warn_profane"])
-			say(lang["access_denied_profane"])
-			return
+			return say(lang["access_denied_profane"])
 		} else if (shorthand.length > 256 - ".txt".length) {
 			return say("The file name is too long!")
 		} else if (!shorthand.match(/^[a-z0-9!#$%&'()+,.=@\[\] ^_`{}~-]*$/i)) {
@@ -597,16 +694,22 @@ function parse_message(data) {
 		let file_exists = fs.existsSync(fn)
 		let can_overwrite = check_if_this_privilege_or_higher(data.home, "Moderator")
 		if (file_exists) {
-			let metadata = get_file_metadata(fs.readFileSync(fn))
+			let metadata = get_file_metadata(fs.readFileSync(fn, {encoding: "utf8"}))
 			can_overwrite = can_overwrite && metadata["read-only"] == false
+			if (metadata["read-only"] == false)
+				return say(`This file is marked as read-only (metadata). Unable to save with the file name **${ shorthand }**.`)
 		}
 
-		if (metadata["read-only"] == false)
-			return say(`This file is marked as read-only (metadata). Unable to save with the file name **${ shorthand }**.`)
+		try {
+			fs.accessSync(fn, fs.constants.W_OK)
+		} catch(e) {
+			say(`This file is marked as read-only (FS attribute). Unable to save with the file name **${ shorthand }**.`)
+			return
+		}
 
 		try {
 			if (command == "save" && (can_overwrite || !file_exists)) {
-				if (file_exists)
+				if (file_exists && metadata["read-only"] == false)
 					console.log("Overwriting that file...")
 
 				if (!file_exists)
@@ -616,27 +719,23 @@ function parse_message(data) {
 						"timestamp": Date.now()
 					}
 
-				save_textfile(filepath, contents, true, metadata)
+				save_textfile(fn, contents, true, metadata)
 			} else if (command == "add" || command == "save") {
 				if (file_exists)
 					contents = "\n" + contents
-				fs.appendFileSync(fn, contents, { encoding: "utf8" })
+				fs.appendFileSync(fn, contents, {encoding: "utf8"})
 			}
 			console.log("Saved file: %s", fn)
 		} catch(e) {
 			if (e.code == "ENOENT") {
 				say(lang["err_enoent_save"])
-			} else if (e.code == "EPERM") {
-				say(`This file is marked as read-only (FS attribute). Unable to save with the file name **${ shorthand }**.`)
+			} else {
+				console.log(e.toString())
+				say(lang["err_internal"])
 			}
-			console.log(e.toString())
 		}
-		if (fs.existsSync(fn)) {
-			say(`File saved! Use "+load ${ shorthand }" to read it!`)
-		} else {
-			say("An internal error occurred. Please tell the owner to check logs.")
-		}
-	} else if (command == "userinfo" && !is_dev_command) {
+		say(`File saved! Use "+load ${ shorthand }" to read it!`)
+	} else if (command == "userinfo") {
 		// return say("W.I.P.") // remove this line if the work is done
 		/* ================================================================== *
 			Needs a refactor and adding the new features according to the
@@ -692,7 +791,7 @@ function parse_message(data) {
 		} catch (e) {
 			say(`*${ e.toString() }*`)
 		}
-	} else if (command == "say" && !is_dev_command) {
+	} else if (command == "say") {
 		if (zero_arguments)
 			return say(lang["missing_argument"])
 
@@ -703,20 +802,24 @@ function parse_message(data) {
 
 		// say(censor.cleanProfanity(duck))
 		say(duck)
-	} else if (command == "text2braille" && !is_dev_command) {
+	} else if (command == "text2braille") {
 		if (zero_arguments) return say("Missing argument!")
 		say(to_braille(duck))
-	} else if (command == "braille2text" && !is_dev_command) {
+	} else if (command == "braille2text") {
 		if (zero_arguments) return say("Missing argument!")
 		say(from_braille(duck))
 	} else if (command == "shutdown" && is_dev_command) {
 		if (!check_if_this_privilege_or_higher(data.home, "Superuser"))
 			return say(lang["low_rank"])
 
+		console.log("Command issued: shutdown")
 		shutdown()
-	} else if (command == "ban") {
+	} else if (command == "ban" && is_dev_command) {
 		if (!check_if_this_privilege_or_higher(data.home, "Superuser"))
 			return say(lang["low_rank"])
+
+		if (!is_home(duck))
+			return say(lang["wrong_format"])
 
 		if (!blacklist.includes(duck)) {
 			ban_user(duck)
@@ -724,9 +827,12 @@ function parse_message(data) {
 		} else [
 			say("The user is already banned.")
 		]
-	} else if (command == "unban") {
+	} else if (command == "unban" && is_dev_command) {
 		if (!check_if_this_privilege_or_higher(data.home, "Superuser"))
 			return say(lang["low_rank"])
+
+		if (!is_home(duck))
+			return say(lang["wrong_format"])
 
 		if (blacklist.includes(duck)) {
 			unban_user(duck)
@@ -773,19 +879,19 @@ function on_user_joined_event(data) {
 
 if (__main__) {
 	console.log("Setting keyboard event handler...")
-	keypress(process.stdin)
-	process.stdin.on("keypress", keyhandle)
-	process.stdin.setRawMode(true)
-	process.stdin.resume()
 
-	console.log("Authenticating...")
-	socket.emit("user joined", mynick, mycolor)
+	rli.on("line", keyhandle)
+	rli.on("close", shutdown)
 
-	console.log("Setting message event handler...")
+	if (!OFFLINE_MODE) {
+		console.log("Authenticating...")
+		socket.emit("user joined", mynick, mycolor)
 
-	socket.on("message", parse_message)
-	socket.on("update users", parse_users)
-	socket.on("user joined", on_user_joined_event)
-	setInterval(() => check_connection(), 3e3)
-	socket.on("connect", () => console.log("Listening to commands from now."))
+		console.log("Setting socket.io event handlers...")
+		socket.on("message", parse_message)
+		socket.on("update users", parse_users)
+		socket.on("user joined", on_user_joined_event)
+		socket.on("connect", () => console.log("Listening to commands from now."))
+		setInterval(check_connection, 3e3)
+	}
 }
