@@ -9,6 +9,8 @@
 
 const __main__ = require.main === module
 const OFFLINE_MODE = false
+const TEST_MODE = false
+const LIVE_MODE = false
 
 console.log("The starting process began.")
 
@@ -48,18 +50,22 @@ if (!OFFLINE_MODE) {
 const he = require("he")
 // const keypress = require("keypress")
 const readline = require("readline")
-const rli = readline.createInterface({
-	input: process.stdin,
-	output: process.stdout,
-})
 const os = require("os")
-const fs = require("fs")
+const path = require("path")
+
+const real_fs = require("fs")
+const { Volume } = require("memfs")
+let fs = class {}
+let fs_mode = "real_fs"
+
 const replaceAll = require("string.prototype.replaceall")
 replaceAll.shim()
+
 const { VM } = require("vm2")
 const { CensorSensor } = require("censor-sensor")
 const censor = new CensorSensor()
 const Hjson = require("hjson")
+const removeMd = require("remove-markdown")
 
 // global declarations
 
@@ -116,7 +122,7 @@ ${ pref }about - Show the information about the system the bot is running on.
 ${ pref }say <message> - Say something!
 ${ pref }text2braille <text> - Convert ASCII text to Braille.
 ${ pref }braille2text <text> - Convert Braille to ASCII text.
-${ pref }userinfo < "home" | "nick" | "id" > <appropriate data to search by> - User info, such as username, color, home, and local permissions.
+(W.I.P.) ${ pref }userinfo < "home" | "nick" | "id" > <appropriate data to search by> - User info, such as username, color, home, and local permissions.
 ${ pref }save <filename without whitespaces> <content> - Save a text file.
 ${ pref }add <filename without whitespaces> <content> - Append to a text file.
 ${ pref }load <filename without whitespaces> - Load a text file.
@@ -141,16 +147,18 @@ ${ devpref }evaljs - Execute JavaScript.`,
 	"err_internal": "An internal error occurred. Please tell the owner to check logs."
 }
 
+const textfile_bool_properties = ["read-only", "fs-time"]
+
 // procedures
 const is_home = (str) => str.match(/^[A-Z0-9]{32,32}$/)
 const timestamp = () => Math.floor(+new Date() / 1e3)
 const pad_num = num => num.toString().padStart(2, "0")
-const remove_tags = (str) => str.replaceAll(/\<\/?[a-z]+\>/gim, "")
 const is_extended_textfile = (data) => data.match(/^NW\//) && data.match(/\x00\n/)
 const set_file_metadata = (content, metadata) => form_file_metadata(metadata) + content
-const get_file_content = (data) => data.split("\u0000\n")[1]
-const clean_input_markdown = (text) => text.replaceAll(/<\/?\w+>/gi, "")
-const clean_output_markdown = (text) => text.replaceAll(/(?<!\\)(\*|_|~~)/g, "").replaceAll("\\\\", "\\")
+const get_file_content = (data) => data.split("\u0000\n").slice(1).join("\u0000\n")
+const prepare_message_text = (str) => he.decode(str.replaceAll(/\<\/?[a-z]+\>/gim, ""))
+//~ const clean_output_markdown = (text) => text.replaceAll(/(?<!\\)(\*|_|~~)/g, "").replaceAll("\\\\", "\\")
+const clean_output_markdown = (text) => he.decode(removeMd(he.encode(text)))
 
 if (OFFLINE_MODE) {
 	socket.send = function(message) {
@@ -159,13 +167,17 @@ if (OFFLINE_MODE) {
 }
 
 function load_obj(fp, options = "") {
+	if (LIVE_MODE && real_fs == null)
+		return false
+
 	try {
-		let loaded = fs.readFileSync(fp, {encoding: "utf8"})
+		let loaded = ""
+		loaded = fs.readFileSync(fp, {encoding: "utf8"})
 		if (options.includes("list"))
 			return Hjson.parse(loaded)
 		return Hjson.rt.parse(loaded)
 	} catch(e) {
-		// case 1: cannot access file or it does not exists
+		// case 1: cannot access file or it does not exist
 		// case 2: bad JSON
 		if (e.code == "ENOENT" || e.toString().includes("in JSON"))
 			return false
@@ -202,6 +214,12 @@ function save_obj(fp, obj, options = "") {
 
 function load_config() {
 	let res = true
+
+	if (LIVE_MODE && fs_mode == "memfs")
+		return res
+
+	console.log(lang["loading_config"])
+
 	let loaded = load_obj(path_privileges)
 	if (typeof loaded === "object" && !OFFLINE_MODE) {
 		privileges = loaded
@@ -213,7 +231,7 @@ function load_config() {
 		console.log("Loaded privileges information successfully.")
 	} else if (loaded === false) {
 		privileges = {}
-		myhome = "---"
+		myhome = "#"
 		res = false
 		console.log("Failed to load privileges information!")
 	}
@@ -224,19 +242,24 @@ function load_config() {
 		console.log("Loaded blacklist successfully.")
 	}
 
-	loaded = load_obj(path_banned_words)
+	loaded = load_obj(path_banned_words, "list")
 	if (typeof loaded === "object") {
 		censor.customDictionary = {}
 		loaded["banned_words"].forEach(value => {
 			censor.customDictionary[value] = 5
 		})
-		console.log("Loaded banned words list successfully.")
+		console.log("Loaded banned words and applied successfully.")
 	}
 
 	return res
 }
 
 function save_config() {
+	if (LIVE_MODE)
+		return true
+
+	console.log(lang["saving_config"])
+
 	let res = true
 	Object.entries(privileges).map(([key, value]) => {
 		if (key.match(/[A-Z0-9]{32}/))
@@ -304,10 +327,7 @@ function unfreeze() {
 
 function shutdown() {
 	console.log("Shutting down...")
-
-	console.log(lang["saving_config"])
 	save_config()
-
 	process.exit()
 }
 
@@ -389,7 +409,6 @@ function keyhandle(line) {
 		return
 
 	if (line.match(/^c(onf(ig)?)? s(ave)?$/i)) { // document this and similar features
-		console.log(lang["saving_config"])
 		let res = save_config()
 		if (res === true) {
 			console.log(lang["done"])
@@ -397,7 +416,6 @@ function keyhandle(line) {
 			console.log(lang["failed"])
 		}
 	} else if (line.match(/^c(onf(ig)?)? (u(pdate)?|r(eload|l))$/i)) { // document this and similar features
-		console.log(lang["loading_config"])
 		let res = load_config()
 		if (res === true) {
 			console.log(lang["done"])
@@ -443,10 +461,19 @@ function format_time(t) {
 	return res
 }
 
+function copy_to_memfs(directory, target_volume) {
+	let obj = {}
+	Object.entries(real_fs.readdirSync(directory)).forEach(([key, value]) => {
+		let selected_path = path.join(directory, value)
+		let loaded = real_fs.readFileSync(selected_path, {encoding: "utf8"})
+		obj[value] = loaded
+	})
+	Object.assign(target_volume, obj)
+}
+
 function save_textfile(filepath, content, overwrite, metadata = {}) {
-	content = set_file_metadata(content, metadata)
 	if (overwrite && metadata["read-only"] == true) {
-		fs.writeFileSync(filepath, content, {encoding: "utf8"})
+		fs.writeFileSync(filepath, set_file_metadata(content, metadata), {encoding: "utf8"})
 	} else {
 		if (fs.existsSync(filepath)) {
 			let loaded = fs.readFileSync(filepath, {encoding: "utf8"})
@@ -454,7 +481,7 @@ function save_textfile(filepath, content, overwrite, metadata = {}) {
 			let old_content = get_file_content(loaded)
 			if (old_metadata["read-only"] == true)
 				throw "READ_ONLY"
-			if (old_metadata["timeless"] == true)
+			if (old_metadata["fs-time"] == true)
 				delete content["last-modified"]
 			content = old_content + "\n" + content
 		}
@@ -477,6 +504,7 @@ function load_textfile(filepath) {
 	let data = loaded
 	if (is_extended_textfile(data)) {
 		data = get_file_content(data)
+		console.log("Reading an extended text file.")
 	} else {
 		console.log("Reading a plain text file.")
 	}
@@ -485,11 +513,10 @@ function load_textfile(filepath) {
 }
 
 function form_file_metadata(metadata) {
-	console.log("called >>> form_file_metadata(%o)", metadata)
 	if (!metadata["read-only"])
 		delete metadata["read-only"]
-	if (!metadata["timeless"])
-		delete metadata["timeless"]
+	if (!metadata["fs-time"])
+		delete metadata["fs-time"]
 
 	let generated = "NW/"
 	generated += JSON.stringify(metadata).replaceAll(/[ \t\n{}"']/g, "")
@@ -501,8 +528,7 @@ function form_file_metadata(metadata) {
 function get_file_metadata(data) {
 	let obj = {
 		"read-only": false,
-		"timeless": false,
-		"last-modified": false
+		"fs-time": false
 	}
 
 	if (!is_extended_textfile(data))
@@ -512,7 +538,7 @@ function get_file_metadata(data) {
 		.split(";")
 	data.forEach(function(property) {
 		var tup = property.split(":")
-		if (tup[1].match(/[01]{1,1}/)) {
+		if (textfile_bool_properties.includes(tup[1]) && tup[1].match(/[01]{1,1}/)) {
 			tup[1] = !!+tup[1]
 		} else if (tup[0] == "last-modified") {
 			tup[1] = +tup[1]
@@ -525,9 +551,19 @@ function get_file_metadata(data) {
 
 // main code, part 1. initialization.
 
+fs = real_fs
+if (LIVE_MODE) {
+	load_config()
+	let mfs = Volume.fromJSON({})
+	fs = mfs
+	fs_mode = "memfs"
+	copy_to_memfs(userfiles, mfs)
+}
+
 censor.disableTier(1)
 censor.disableTier(2)
 censor.setCleanFunction((str) => Array.from(str, x => ".").join(""))
+
 const start_time = timestamp()
 
 // Load the system info
@@ -547,19 +583,20 @@ let ram_info = 4
 const system_info_string = `This bot is running on ${ cpu_info } with ${ ram_info } GB of RAM.`
 cpu_info = ram_info = null
 
-console.log(lang["loading_config"])
-load_config()
+if (!LIVE_MODE)
+	load_config()
 
 // main code, part 2. event handlers.
 
 function parse_message(data) {
-	if (do_not_parse_messages)
-		return
+	if (do_not_parse_messages) return
 
-	let is_me = !OFFLINE_MODE && (data.nick == mynick && (data.home == myhome || myhome == "---"))
+	let is_me = data.nick == mynick && (data.home == myhome || myhome == "#")
+	is_me = !OFFLINE_MODE && is_me
 	let is_system = data.home === "trollbox"
 	let is_blocked = blacklist.includes(data.home)
-	let do_not_process = is_me || is_system || is_blocked
+	let is_allowed_for_tests = TEST_MODE && !check_if_this_privilege_or_higher(data.home, "Superuser")
+	let do_not_process = is_me || is_system || is_blocked || is_allowed_for_tests
 
 	if (data.home == "trollbox" &&
 		data.msg.match(/you have exceeded the maximum/gim))
@@ -579,11 +616,12 @@ function parse_message(data) {
 
 	if (do_not_process) return
 
-	data.msg = remove_tags(he.decode(data.msg))
+	data.msg = prepare_message_text(data.msg)
 	let msg = data.msg
 	let test_pref = msg.match(regex_pref)
 	let test_devpref = msg.match(regex_devpref)
 	let is_dev_command = false
+
 	if (test_devpref) {
 		is_dev_command = true
 		msg = msg.slice(devpref.length)
@@ -633,13 +671,11 @@ function parse_message(data) {
 		let fn = userfiles + shorthand + ".txt"
 
 		if (!fs.existsSync(fn))
-			say(`man there's literally no "${ shorthand }" file`)
+			return say(`man there's literally no "${ shorthand }" file`)
 
 		try {
-			let loaded = load_textfile(fn)
-			let metadata = loaded[0]
-			let contents = loaded[1]
-			let attribute_str = ["[ ] Read-only", "[ ] Timeless"]
+			let [metadata, contents] = load_textfile(fn)
+			let attribute_str = ["[ ] Read-only", "[ ] Using FS time information"]
 			let extended_textfile_props = ""
 			if (typeof metadata === "object") {
 				let fs_attribute_readonly = false
@@ -652,17 +688,22 @@ function parse_message(data) {
 				if (metadata["read-only"] || fs_attribute_readonly)
 					attribute_str[0] = "[X] Read-only"
 
-				if (metadata["timeless"])
-					attribute_str[1] = "[X] Timeless"
+				if (metadata["fs-time"])
+					attribute_str[1] = "[X] Use FS time information"
 				attribute_str = attribute_str.join(" | ")
-				let date_str = ""
-				if (!metadata["timeless"] &&
-					metadata["last-modified"] !== undefined)
-				{
-					date_str = new Date(metadata["last-modified"]).toISOString()
-					date_str = `Last modified: ${ date_str }\n`
+
+				let mtime = 0
+				if (metadata["fs-time"]) {
+					mtime = fs.statSync(fn).mtime
+				} else {
+					mtime = metadata["last-modified"]
 				}
-				extended_textfile_props = `Attributes: ${ attribute_str }\n${ date_str }`
+
+				let date_str = ""
+				date_str = new Date(mtime).toISOString()
+				date_str = date_str.replace("T", " ").slice(0, -5) // ease of human reading
+
+				extended_textfile_props = `Attributes: ${ attribute_str }\nLast modified: ${ date_str }\n`
 			}
 			let res = `File name: ${ shorthand }\n${ extended_textfile_props }Contents:\n${ contents }`
 			say(res)
@@ -693,31 +734,33 @@ function parse_message(data) {
 
 		let file_exists = fs.existsSync(fn)
 		let can_overwrite = check_if_this_privilege_or_higher(data.home, "Moderator")
+		let metadata = {
+			"read-only": false,
+			"fs-time": false,
+			"last-modified": Date.now()
+		}
 		if (file_exists) {
-			let metadata = get_file_metadata(fs.readFileSync(fn, {encoding: "utf8"}))
-			can_overwrite = can_overwrite && metadata["read-only"] == false
-			if (metadata["read-only"] == false)
-				return say(`This file is marked as read-only (metadata). Unable to save with the file name **${ shorthand }**.`)
+			metadata = get_file_metadata(fs.readFileSync(fn, {encoding: "utf8"}))
+			if (typeof metadata === "object") {
+				can_overwrite = can_overwrite && metadata["read-only"] == false
+				if (metadata["read-only"] == false)
+					return say(`This file is marked as read-only (metadata). Unable to save with the file name **${ shorthand }**.`)
+			}
 		}
 
 		try {
 			fs.accessSync(fn, fs.constants.W_OK)
 		} catch(e) {
-			say(`This file is marked as read-only (FS attribute). Unable to save with the file name **${ shorthand }**.`)
-			return
+			if (e.code == "EPERM") {
+				say(`This file is marked as read-only (FS attribute). Unable to save with the file name **${ shorthand }**.`)
+				return
+			}
 		}
 
 		try {
 			if (command == "save" && (can_overwrite || !file_exists)) {
 				if (file_exists && metadata["read-only"] == false)
 					console.log("Overwriting that file...")
-
-				if (!file_exists)
-					metadata = {
-						"read-only": "false",
-						"timeless": "false",
-						"timestamp": Date.now()
-					}
 
 				save_textfile(fn, contents, true, metadata)
 			} else if (command == "add" || command == "save") {
@@ -734,9 +777,9 @@ function parse_message(data) {
 				say(lang["err_internal"])
 			}
 		}
-		say(`File saved! Use "+load ${ shorthand }" to read it!`)
-	} else if (command == "userinfo") {
-		// return say("W.I.P.") // remove this line if the work is done
+		say(`File saved! Use "${ pref }load ${ shorthand }" to read it!`)
+	} else if (false && command == "userinfo") {
+		return say("W.I.P.") // remove this line if the work is done
 		/* ================================================================== *
 			Needs a refactor and adding the new features according to the
 			specification in the "help" manual.
@@ -880,6 +923,10 @@ function on_user_joined_event(data) {
 if (__main__) {
 	console.log("Setting keyboard event handler...")
 
+	const rli = readline.createInterface({
+		input: process.stdin,
+		output: process.stdout,
+	})
 	rli.on("line", keyhandle)
 	rli.on("close", shutdown)
 
