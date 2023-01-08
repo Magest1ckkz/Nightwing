@@ -54,7 +54,7 @@ const os = require("os")
 const path = require("path")
 
 const real_fs = require("fs")
-const { Volume } = require("memfs")
+const mem_fs = require("memfs")
 let fs = class {}
 let fs_mode = "real_fs"
 
@@ -88,10 +88,10 @@ let privileges = {}
 let blacklist = []
 let myhome = ""
 
-const userfiles = "./PublicData/"
-const path_privileges = "./privileges.hjson"
-const path_blacklist = "./blacklist.hjson"
-const path_banned_words = "./banned_words.hjson"
+const userfiles = "PublicData/"
+const path_privileges = "privileges.hjson"
+const path_blacklist = "blacklist.hjson"
+const path_banned_words = "banned_words.hjson"
 
 let freeze_timeout_handler = false
 let frozen = false
@@ -110,11 +110,26 @@ const regex_devpref = new RegExp(`^${ escape_regex(devpref) }\\w+`, "g")
 let do_not_check_connection = false
 let do_not_parse_messages = false
 
+const version_info_string = `Nightwing.js version 0.5.3 [dev. branch]`
+let additional_version_info_string = "Modes enabled: "
+let running_options = []
+if (OFFLINE_MODE)
+	running_options.push("offline")
+if (TEST_MODE)
+	running_options.push("test")
+if (LIVE_MODE)
+	running_options.push("live")
+if (running_options.length == 0) {
+	additional_version_info_string += "None"
+} else {
+	additional_version_info_string += running_options.join(", ")
+}
+
 const lang = {
 	"done": "Done.",
 	"failed": "Failed!",
 	"help": `\
-**Nightwing.js version 0.5.2** [dev. branch]
+**${ version_info_string }**
 A versatile bot for trollbox.party.
 
 ${ pref }help - Show this message.
@@ -159,6 +174,7 @@ const get_file_content = (data) => data.split("\u0000\n").slice(1).join("\u0000\
 const prepare_message_text = (str) => he.decode(str.replaceAll(/\<\/?[a-z]+\>/gim, ""))
 //~ const clean_output_markdown = (text) => text.replaceAll(/(?<!\\)(\*|_|~~)/g, "").replaceAll("\\\\", "\\")
 const clean_output_markdown = (text) => he.decode(removeMd(he.encode(text)))
+const clean_dir_path = path => path.split("/").filter(entry => entry != "").join("/")
 
 if (OFFLINE_MODE) {
 	socket.send = function(message) {
@@ -172,7 +188,7 @@ function load_obj(fp, options = "") {
 
 	try {
 		let loaded = ""
-		loaded = fs.readFileSync(fp, {encoding: "utf8"})
+		loaded = fs.readFileSync(fp, { encoding: "utf8" })
 		if (options.includes("list"))
 			return Hjson.parse(loaded)
 		return Hjson.rt.parse(loaded)
@@ -195,15 +211,15 @@ function save_obj(fp, obj, options = "") {
 	let loaded_from_disk = null
 	let need_to_compare = false
 	if (fs.existsSync(fp)) {
-		loaded_from_disk = fs.readFileSync(fp, {encoding: "utf8"})
+		loaded_from_disk = fs.readFileSync(fp, { encoding: "utf8" })
 		need_to_compare = true
 	}
 
 	try {
 		if (need_to_compare && res != loaded_from_disk) {
 			// can overwrite previous file backups!
-			fs.writeFileSync(fp + ".bak", loaded_from_disk, {encoding: "utf8"})
-			fs.writeFileSync(fp, res, {encoding: "utf8"})
+			fs.writeFileSync(fp + ".bak", loaded_from_disk, { encoding: "utf8" })
+			fs.writeFileSync(fp, res, { encoding: "utf8" })
 		}
 		return true
 	} catch(e) {
@@ -461,32 +477,39 @@ function format_time(t) {
 	return res
 }
 
-function copy_to_memfs(directory, target_volume) {
-	let obj = {}
-	Object.entries(real_fs.readdirSync(directory)).forEach(([key, value]) => {
-		let selected_path = path.join(directory, value)
-		let loaded = real_fs.readFileSync(selected_path, {encoding: "utf8"})
-		obj[value] = loaded
+function copy_dir_to_memfs(source_directory, target_directory) {
+	source_directory = clean_dir_path(source_directory)
+	target_directory = clean_dir_path(target_directory)
+
+	console.log("Copying %s/*.* to memfs/%s...", source_directory, target_directory)
+
+	if (!mem_fs.existsSync(target_directory))
+		mem_fs.mkdirSync(target_directory, { recursive: true })
+
+	Object.entries(real_fs.readdirSync(source_directory)).forEach(([key, fn]) => {
+		let from_path = path.join(source_directory, fn)
+		let to_path = path.join(target_directory, fn)
+		let loaded = real_fs.readFileSync(from_path)
+		mem_fs.writeFileSync(to_path, loaded)
 	})
-	Object.assign(target_volume, obj)
 }
 
 function save_textfile(filepath, content, overwrite, metadata = {}) {
-	if (overwrite && metadata["read-only"] == true) {
-		fs.writeFileSync(filepath, set_file_metadata(content, metadata), {encoding: "utf8"})
+	if (overwrite && metadata["read-only"]) {
+		fs.writeFileSync(filepath, set_file_metadata(content, metadata), { encoding: "utf8" })
 	} else {
 		if (fs.existsSync(filepath)) {
-			let loaded = fs.readFileSync(filepath, {encoding: "utf8"})
+			let loaded = fs.readFileSync(filepath, { encoding: "utf8" })
 			let old_metadata = get_file_metadata(loaded)
 			let old_content = get_file_content(loaded)
-			if (old_metadata["read-only"] == true)
+			if (old_metadata["read-only"])
 				throw "READ_ONLY"
-			if (old_metadata["fs-time"] == true)
+			if (old_metadata["fs-time"])
 				delete content["last-modified"]
 			content = old_content + "\n" + content
 		}
 		let res = set_file_metadata(content, metadata)
-		fs.writeFileSync(filepath, res, {encoding: "utf8"})
+		fs.writeFileSync(filepath, res, { encoding: "utf8" })
 	}
 }
 
@@ -494,7 +517,7 @@ function load_textfile(filepath) {
 	if (!fs.existsSync(filepath))
 		return false
 
-	let loaded = fs.readFileSync(filepath, {encoding: "utf8"})
+	let loaded = fs.readFileSync(filepath, { encoding: "utf8" })
 
 	let metadata = {}
 	let load_metadata = get_file_metadata(loaded)
@@ -507,6 +530,7 @@ function load_textfile(filepath) {
 		console.log("Reading an extended text file.")
 	} else {
 		console.log("Reading a plain text file.")
+		metadata = false
 	}
 
 	return [metadata, data]
@@ -554,11 +578,13 @@ function get_file_metadata(data) {
 fs = real_fs
 if (LIVE_MODE) {
 	load_config()
-	let mfs = Volume.fromJSON({})
-	fs = mfs
+	fs = mem_fs
 	fs_mode = "memfs"
-	copy_to_memfs(userfiles, mfs)
+	copy_dir_to_memfs(userfiles, "PublicData")
 }
+
+if (!fs.existsSync(userfiles))
+	fs.mkdirSync(userfiles, { recursive: true })
 
 censor.disableTier(1)
 censor.disableTier(2)
@@ -654,6 +680,8 @@ function parse_message(data) {
 		say(lang["help"])
 	} else if (command == "about") {
 		say(system_info_string)
+	} else if (command == "version") {
+		say(version_info_string + "\n" + additional_version_info_string)
 	} else if (command == "uptime") {
 		let os_uptime = format_time(os.uptime())
 		let bot_uptime = format_time(timestamp() - start_time)
@@ -676,13 +704,18 @@ function parse_message(data) {
 		try {
 			let [metadata, contents] = load_textfile(fn)
 			let attribute_str = ["[ ] Read-only", "[ ] Using FS time information"]
+			if (LIVE_MODE)
+				// attribute_str = attribute_str.slice(1)
+				attribute_str.shift()
 			let extended_textfile_props = ""
 			if (typeof metadata === "object") {
 				let fs_attribute_readonly = false
 				try {
 					fs.accessSync(fn, fs.constants.W_OK)
-				} catch(err) {
-					fs_attribute_readonly = true
+				} catch(e) {
+					if (e.name != "TypeError") {
+						fs_attribute_readonly = true
+					}
 				}
 
 				if (metadata["read-only"] || fs_attribute_readonly)
@@ -729,9 +762,6 @@ function parse_message(data) {
 
 		let fn = userfiles + shorthand + ".txt"
 
-		if (!fs.existsSync(userfiles))
-			fs.mkdirSync(userfiles)
-
 		let file_exists = fs.existsSync(fn)
 		let can_overwrite = check_if_this_privilege_or_higher(data.home, "Moderator")
 		let metadata = {
@@ -739,11 +769,12 @@ function parse_message(data) {
 			"fs-time": false,
 			"last-modified": Date.now()
 		}
+
 		if (file_exists) {
-			metadata = get_file_metadata(fs.readFileSync(fn, {encoding: "utf8"}))
+			metadata = get_file_metadata(fs.readFileSync(fn, { encoding: "utf8" }))
 			if (typeof metadata === "object") {
-				can_overwrite = can_overwrite && metadata["read-only"] == false
-				if (metadata["read-only"] == false)
+				can_overwrite = can_overwrite && !metadata["read-only"]
+				if (!can_overwrite)
 					return say(`This file is marked as read-only (metadata). Unable to save with the file name **${ shorthand }**.`)
 			}
 		}
@@ -766,7 +797,7 @@ function parse_message(data) {
 			} else if (command == "add" || command == "save") {
 				if (file_exists)
 					contents = "\n" + contents
-				fs.appendFileSync(fn, contents, {encoding: "utf8"})
+				fs.appendFileSync(fn, contents, { encoding: "utf8" })
 			}
 			console.log("Saved file: %s", fn)
 		} catch(e) {
