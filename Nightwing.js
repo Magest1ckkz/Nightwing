@@ -4,7 +4,6 @@
 	developed by Nightwing.js development team
 	licensed under MIT License
 */
-
 "use strict"
 
 const __main__ = require.main === module
@@ -12,7 +11,7 @@ const OFFLINE_MODE = false
 const TEST_MODE = false
 const LIVE_MODE = false
 
-console.log("The starting process began.")
+console.log("Starting Nightwing.js\n")
 
 console.log("Setting functions and values...")
 
@@ -21,11 +20,14 @@ const get_key_by_value = (object, value) => Object.keys(object).find(key => obje
 const escape_regex = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") // $& means the whole matched string
 const swap_keys_and_values = (object) => Object.fromEntries(Object.entries(object).map(([key, value]) => [value, key]))
 const strmap = (the_map, string) => string.split("").map(c => the_map[c]).join("")
-let braille_alphabet = Array.from({ length: 0x283f - 0x2800 }, (_, i) => String.fromCharCode("\u2800".charCodeAt(0) + i))
-const braille_map = " A1B'K2L@CIF/MSP\"E3H9O6R^DJG>NTQ,*5<-U8V.%[$+X!&;:4\\0Z7(_?W]#Y)=".split("").reduce((o, n, i) => {
-	return o[n] = braille_alphabet[i],
-	       o[n.toLowerCase()] = o[n], o
-}, {})
+let braille_alphabet = Array.from({
+	length: 0x283f - 0x2800
+}, (_, i) => String.fromCharCode("\u2800".charCodeAt(0) + i))
+const braille_map =
+	" A1B'K2L@CIF/MSP\"E3H9O6R^DJG>NTQ,*5<-U8V.%[$+X!&;:4\\0Z7(_?W]#Y)=".split("").reduce((o, n, i) => {
+		return o[n] = braille_alphabet[i],
+			o[n.toLowerCase()] = o[n], o
+	}, {})
 braille_alphabet = null
 const inverse_braille_map = swap_keys_and_values(braille_map)
 const to_braille = (string) => strmap(braille_map, string)
@@ -41,26 +43,21 @@ if (!OFFLINE_MODE) {
 	})
 } else {
 	socket.connected = true
-	socket.connect = function() {}
-	socket.disconnect = function() {}
-	socket.destroy = function() {}
-	socket.emit = function() {}
+	socket.connect = function () {}
+	socket.disconnect = function () {}
+	socket.destroy = function () {}
+	socket.emit = function () {}
 }
-
 const he = require("he")
-// const keypress = require("keypress")
 const readline = require("readline")
 const os = require("os")
 const path = require("path")
-
 const real_fs = require("fs")
 const mem_fs = require("memfs")
 let fs = class {}
 let fs_mode = "real_fs"
-
 const replaceAll = require("string.prototype.replaceall")
 replaceAll.shim()
-
 const { VM } = require("vm2")
 const { CensorSensor } = require("censor-sensor")
 const censor = new CensorSensor()
@@ -69,7 +66,7 @@ const removeMd = require("remove-markdown")
 
 // global declarations
 
-// probably could be done in one chain
+// this probably could be done in one chain
 let privilege_key = {}
 let privilege_key_list = [
 	"User",
@@ -83,36 +80,28 @@ for (let i = 0; i < 4; i++) {
 // -----------------------------------
 
 const inverse_privilege_key = swap_keys_and_values(privilege_key)
-
 let privileges = {}
 let blacklist = []
 let myhome = ""
-
 const userfiles = "PublicData/"
 const path_privileges = "privileges.hjson"
 const path_blacklist = "blacklist.hjson"
 const path_banned_words = "banned_words.hjson"
-
 let freeze_timeout_handler = false
 let frozen = false
-
 let current_users = {}
-
 const pref = "+"
 const devpref = "+/"
-
 const mynick = `Nightwing [${ pref }]`
 const mycolor = "royalblue"
-
 const regex_pref = new RegExp(`^${ escape_regex(pref) }\\w+`, "g")
 const regex_devpref = new RegExp(`^${ escape_regex(devpref) }\\w+`, "g")
-
 let do_not_check_connection = false
 let do_not_parse_messages = false
-
 const version_info_string = `Nightwing.js version 0.5.3 [dev. branch]`
 let additional_version_info_string = "Modes enabled: "
 let running_options = []
+
 if (OFFLINE_MODE)
 	running_options.push("offline")
 if (TEST_MODE)
@@ -143,7 +132,6 @@ ${ pref }add <filename without whitespaces> <content> - Append to a text file.
 ${ pref }load <filename without whitespaces> - Load a text file.
 
 **Superuser and higher only commands**
-${ devpref }uptime - Show the uptime information
 ${ devpref }freeze - Freeze bot (stop reacting to commands).
 ${ devpref }unfreeze - Unfreeze bot (continue reacting to commands).
 ${ devpref }ban <home> - Ban a user
@@ -158,7 +146,9 @@ ${ devpref }evaljs - Execute JavaScript.`,
 	"loading_config": "Loading configurations...",
 	"saving_config": "Saving configurations...",
 	"warn_profane": "At least 1 profane word has been detected in the arguments.",
-	"access_denied_profane": he.decode("&#128248;&#9989; Caught you in 4k120fps"),
+	"bot_is_frozen": "The bot is frozen now.",
+	"access_denied_profane": he.decode(
+		"&#128248;&#9989; Caught you in 4k120fps"),
 	"err_internal": "An internal error occurred. Please tell the owner to check logs."
 }
 
@@ -167,17 +157,18 @@ const textfile_bool_properties = ["read-only", "fs-time"]
 // procedures
 const is_home = (str) => str.match(/^[A-Z0-9]{32,32}$/)
 const timestamp = () => Math.floor(+new Date() / 1e3)
-const pad_num = num => num.toString().padStart(2, "0")
+const pad_num = (num) => num.toString().padStart(2, "0")
 const is_extended_textfile = (data) => data.match(/^NW\//) && data.match(/\x00\n/)
-const set_file_metadata = (content, metadata) => form_file_metadata(metadata) + content
+const set_file_metadata = (content, metadata) => form_file_metadata(metadata) +content
 const get_file_content = (data) => data.split("\u0000\n").slice(1).join("\u0000\n")
 const prepare_message_text = (str) => he.decode(str.replaceAll(/\<\/?[a-z]+\>/gim, ""))
-//~ const clean_output_markdown = (text) => text.replaceAll(/(?<!\\)(\*|_|~~)/g, "").replaceAll("\\\\", "\\")
 const clean_output_markdown = (text) => he.decode(removeMd(he.encode(text)))
-const clean_dir_path = path => path.split("/").filter(entry => entry != "").join("/")
+const clean_dir_path = (path) => path.split("/").filter(entry => entry != "").join("/")
+const ban_user = (home) => blacklist.push(home)
+const unban_user = (home) => blacklist.splice(blacklist.indexOf(home), 1)
 
 if (OFFLINE_MODE) {
-	socket.send = function(message) {
+	socket.send = function (message) {
 		console.log("%s", clean_output_markdown(message))
 	}
 }
@@ -192,9 +183,9 @@ function load_obj(fp, options = "") {
 		if (options.includes("list"))
 			return Hjson.parse(loaded)
 		return Hjson.rt.parse(loaded)
-	} catch(e) {
+	} catch (e) {
 		// case 1: cannot access file or it does not exist
-		// case 2: bad JSON
+		// case 2: malformed JSON
 		if (e.code == "ENOENT" || e.toString().includes("in JSON"))
 			return false
 	}
@@ -202,10 +193,14 @@ function load_obj(fp, options = "") {
 
 function save_obj(fp, obj, options = "") {
 	let res = ""
+	let hjson_args = {
+		quotes: "all",
+		space: "\t"
+	}
 	if (options.includes("list")) {
-		res = Hjson.stringify(obj, { quotes: "all", space: "\t" })
+		res = Hjson.stringify(obj, hjson_args)
 	} else {
-		res = Hjson.rt.stringify(obj, { quotes: "all", space: "\t" })
+		res = Hjson.rt.stringify(obj, hjson_args)
 	}
 
 	let loaded_from_disk = null
@@ -217,13 +212,13 @@ function save_obj(fp, obj, options = "") {
 
 	try {
 		if (need_to_compare && res != loaded_from_disk) {
-			// can overwrite previous file backups!
+			// (!) can overwrite previous file backups
 			fs.writeFileSync(fp + ".bak", loaded_from_disk, { encoding: "utf8" })
 			fs.writeFileSync(fp, res, { encoding: "utf8" })
 		}
 		return true
-	} catch(e) {
-		// not much to handle
+	} catch (e) {
+		// in this case there are not much exceptions left to handle
 		return false
 	}
 }
@@ -282,7 +277,9 @@ function save_config() {
 			privileges[key] = inverse_privilege_key[value]
 	})
 	res = save_obj(path_privileges, privileges)
-	res = res && save_obj(path_blacklist, { "blacklist": blacklist }, "list")
+	res = res && save_obj(path_blacklist, {
+		"blacklist": blacklist
+	}, "list")
 	return res
 }
 
@@ -297,6 +294,7 @@ function check_if_this_privilege_or_higher(source, needle) {
 		if (home == source && level >= privilege_key[needle])
 			return true
 	}
+
 	return false
 }
 
@@ -306,19 +304,12 @@ function form_userinfo(name, colors, homes) {
 	if (typeof homes === "string")
 		homes = [homes]
 	say(
-		  "• Name: " + he.decode(name) +
-	    `\n• Color${ (colors.length > 1) ? "s" : "" }: ` + colors.join(", ") +
-	    `\n• Home${ (homes.length > 1) ? "s" : "" }: ` + homes.join(", ") +
-	    "\n• Permission level: " + inverse_privilege_key[privileges[homes[0]]] // should display all of them, linked to homes
+		"• Name: " + he.decode(name) +
+		`\n• Color${ (colors.length > 1) ? "s" : "" }: ` + colors.join(", ") +
+		`\n• Home${ (homes.length > 1) ? "s" : "" }: ` + homes.join(", ") +
+		"\n• Permission level: " + inverse_privilege_key[privileges[homes[
+			0]]] // should display all of them, linked to homes
 	)
-}
-
-function ban_user(home) {
-	blacklist.push(home)
-}
-
-function unban_user(home) {
-	blacklist.splice(blacklist.indexOf(home), 1)
 }
 
 function freeze() {
@@ -326,8 +317,8 @@ function freeze() {
 	freeze_timeout_handler = setTimeout(() => {
 		shutdown()
 	}, 1 * 3600 * 1e3) // 1 hour
-	say("+freeze \u2744\uFE0F")
-	console.log("The bot is frozen now.")
+	say(lang["bot_is_frozen"])
+	console.log(lang["bot_is_frozen"])
 }
 
 function unfreeze() {
@@ -391,14 +382,14 @@ function form_keyequal() {
 	// actually a useful function
 	let args = Object.values(arguments)
 	let res = new Object()
-	args.forEach(function(value) {
+	args.forEach(function (value) {
 		res[value] = eval(value)
 	})
 	return res
 }
 
 function vmrun(code) {
-	// not `while (true)` safe anymore
+	// not `while (true)`-like safe anymore
 	let imported_readonly_globals = [
 		"console",
 		"censor",
@@ -413,7 +404,8 @@ function vmrun(code) {
 		allowAsync: false // be aware of setTimeout in called functions
 	})
 	imported_readonly_globals.forEach(value => {
-		eval(`nevermind.freeze(${ value }, "${ value.replaceAll('"', '\\"') }")`)
+		eval(
+			`nevermind.freeze(${ value }, "${ value.replaceAll('"', '\\"') }")`)
 	})
 	return nevermind.run(code)
 }
@@ -457,9 +449,8 @@ function keyhandle(line) {
 
 function asciify(text) {
 	text = text.replaceAll("\\", "\\\\").replaceAll("*", "\\*").replaceAll("_", "\\_").split("\n")
-	let res = text
-	res.forEach((line, index) => {
-		res[index] = "\u200B" + line.trimEnd()
+	text.forEach((line, index) => {
+		text[index] = "\u200B" + line.trimEnd()
 	})
 	res = res.join("\n")
 	return res
@@ -481,12 +472,16 @@ function copy_dir_to_memfs(source_directory, target_directory) {
 	source_directory = clean_dir_path(source_directory)
 	target_directory = clean_dir_path(target_directory)
 
-	console.log("Copying %s/*.* to memfs/%s...", source_directory, target_directory)
+	console.log("Copying %s/*.* to memfs/%s...", source_directory,
+		target_directory)
 
 	if (!mem_fs.existsSync(target_directory))
-		mem_fs.mkdirSync(target_directory, { recursive: true })
+		mem_fs.mkdirSync(target_directory, {
+			recursive: true
+		})
 
-	Object.entries(real_fs.readdirSync(source_directory)).forEach(([key, fn]) => {
+	Object.entries(real_fs.readdirSync(source_directory)).forEach(([key,
+	fn]) => {
 		let from_path = path.join(source_directory, fn)
 		let to_path = path.join(target_directory, fn)
 		let loaded = real_fs.readFileSync(from_path)
@@ -555,14 +550,15 @@ function get_file_metadata(data) {
 		"fs-time": false
 	}
 
-	if (!is_extended_textfile(data))
-		return false // it's not an extended text file
+	if (!is_extended_textfile(data)) // if it's not an extended text file
+		return false
 
 	data = data.slice("NW/".length).split("\u0000\n")[0].replaceAll(" ", "")
 		.split(";")
-	data.forEach(function(property) {
+	data.forEach(function (property) {
 		var tup = property.split(":")
-		if (textfile_bool_properties.includes(tup[1]) && tup[1].match(/[01]{1,1}/)) {
+		if (textfile_bool_properties.includes(tup[1]) && tup[1].match(
+				/[01]{1,1}/)) {
 			tup[1] = !!+tup[1]
 		} else if (tup[0] == "last-modified") {
 			tup[1] = +tup[1]
@@ -584,11 +580,13 @@ if (LIVE_MODE) {
 }
 
 if (!fs.existsSync(userfiles))
-	fs.mkdirSync(userfiles, { recursive: true })
+	fs.mkdirSync(userfiles, {
+		recursive: true
+	})
 
 censor.disableTier(1)
 censor.disableTier(2)
-censor.setCleanFunction((str) => Array.from(str, x => ".").join(""))
+censor.setCleanFunction((str) => Array.from(str, x => ".").join(""))
 
 const start_time = timestamp()
 
@@ -606,7 +604,8 @@ let cpu_info = "Intel(R) Core(TM) i3-540 CPU @ 3.06 GHz"
 let ram_info = 4
 // ------------
 
-const system_info_string = `This bot is running on ${ cpu_info } with ${ ram_info } GB of RAM.`
+const system_info_string =
+	`This bot is running on ${ cpu_info } with ${ ram_info } GB of RAM.`
 cpu_info = ram_info = null
 
 if (!LIVE_MODE)
@@ -624,9 +623,9 @@ function parse_message(data) {
 	let is_allowed_for_tests = TEST_MODE && !check_if_this_privilege_or_higher(data.home, "Superuser")
 	let do_not_process = is_me || is_system || is_blocked || is_allowed_for_tests
 
+	// keeping the connection
 	if (data.home == "trollbox" &&
-		data.msg.match(/you have exceeded the maximum/gim))
-	{
+		data.msg.match(/you have exceeded the maximum/gim)) {
 		console.log("trollbox.party: " + he.decode(data.msg))
 		socket.disconnect()
 		do_not_check_connection = true
@@ -654,7 +653,8 @@ function parse_message(data) {
 	} else if (test_pref) {
 		msg = msg.slice(pref.length)
 	} else {
-		return // it's not a command, ignore
+		// if it's not a command, then ignore the message
+		return
 	}
 
 	let args = msg.split(" ")
@@ -682,16 +682,13 @@ function parse_message(data) {
 		say(system_info_string)
 	} else if (command == "version") {
 		say(version_info_string + "\n" + additional_version_info_string)
-	} else if (command == "uptime") {
-		let os_uptime = format_time(os.uptime())
-		let bot_uptime = format_time(timestamp() - start_time)
-		say(`OS uptime: ${ os_uptime }\nBot uptime: ${ bot_uptime }`)
 	} else if (command == "load") {
 		let shorthand = args[1]
 		if (shorthand.match(/\/dev\/(u)?random(\/)?/gim)) {
 			let randbytes = ""
 			for (let i = 0; i < 2 ** 10; i++) {
-				randbytes += String.fromCharCode(Math.floor(Math.random() * 256))
+				randbytes += String.fromCharCode(Math.floor(Math.random() *
+					256))
 			}
 			say(`File contents:\n${ randbytes }`)
 			return
@@ -703,16 +700,15 @@ function parse_message(data) {
 
 		try {
 			let [metadata, contents] = load_textfile(fn)
-			let attribute_str = ["[ ] Read-only", "[ ] Using FS time information"]
-			if (LIVE_MODE)
-				// attribute_str = attribute_str.slice(1)
-				attribute_str.shift()
+			let attribute_str = ["[ ] Read-only",
+				"[ ] Using FS time information"
+			]
 			let extended_textfile_props = ""
 			if (typeof metadata === "object") {
 				let fs_attribute_readonly = false
 				try {
 					fs.accessSync(fn, fs.constants.W_OK)
-				} catch(e) {
+				} catch (e) {
 					if (e.name != "TypeError") {
 						fs_attribute_readonly = true
 					}
@@ -734,14 +730,15 @@ function parse_message(data) {
 
 				let date_str = ""
 				date_str = new Date(mtime).toISOString()
-				date_str = date_str.replace("T", " ").slice(0, -5) // ease of human reading
-
-				extended_textfile_props = `Attributes: ${ attribute_str }\nLast modified: ${ date_str }\n`
+				date_str = date_str.replace("T", " ").slice(0, -
+					5) // ease of human reading
+				extended_textfile_props =
+					`Attributes: ${ attribute_str }\nLast modified: ${ date_str }\n`
 			}
-			let res = `File name: ${ shorthand }\n${ extended_textfile_props }Contents:\n${ contents }`
+			let res =
+				`File name: ${ shorthand }\n${ extended_textfile_props }Contents:\n${ contents }`
 			say(res)
-		} catch(e) {
-			//~ console.log(e.toString())
+		} catch (e) {
 			console.log(e)
 			say(lang["err_internal"])
 		}
@@ -750,8 +747,10 @@ function parse_message(data) {
 		let contents = args.slice(2).join(" ")
 
 		if (contents === "") {
-			return say("The file is not saved because no content was specified.")
-		} else if (false && (censor.isProfaneIsh(shorthand) || censor.isProfaneIsh(contents))) {
+			return say(
+				"The file is not saved because no content was specified.")
+		} else if (false && (censor.isProfaneIsh(shorthand) || censor
+				.isProfaneIsh(contents))) {
 			console.log(lang["warn_profane"])
 			return say(lang["access_denied_profane"])
 		} else if (shorthand.length > 256 - ".txt".length) {
@@ -761,7 +760,6 @@ function parse_message(data) {
 		}
 
 		let fn = userfiles + shorthand + ".txt"
-
 		let file_exists = fs.existsSync(fn)
 		let can_overwrite = check_if_this_privilege_or_higher(data.home, "Moderator")
 		let metadata = {
@@ -775,24 +773,25 @@ function parse_message(data) {
 			if (typeof metadata === "object") {
 				can_overwrite = can_overwrite && !metadata["read-only"]
 				if (!can_overwrite)
-					return say(`This file is marked as read-only (metadata). Unable to save with the file name **${ shorthand }**.`)
+					return say(
+						`This file is marked as read-only (metadata). Unable to save with the file name **${ shorthand }**.`
+						)
 			}
 		}
 
 		try {
 			fs.accessSync(fn, fs.constants.W_OK)
-		} catch(e) {
-			if (e.code == "EPERM") {
-				say(`This file is marked as read-only (FS attribute). Unable to save with the file name **${ shorthand }**.`)
-				return
-			}
+		} catch (e) {
+			if (e.code == "EPERM")
+				return say(
+					`This file is marked as read-only (FS attribute). Unable to save with the file name **${ shorthand }**.`
+					)
 		}
 
 		try {
 			if (command == "save" && (can_overwrite || !file_exists)) {
 				if (file_exists && metadata["read-only"] == false)
 					console.log("Overwriting that file...")
-
 				save_textfile(fn, contents, true, metadata)
 			} else if (command == "add" || command == "save") {
 				if (file_exists)
@@ -800,7 +799,7 @@ function parse_message(data) {
 				fs.appendFileSync(fn, contents, { encoding: "utf8" })
 			}
 			console.log("Saved file: %s", fn)
-		} catch(e) {
+		} catch (e) {
 			if (e.code == "ENOENT") {
 				say(lang["err_enoent_save"])
 			} else {
@@ -809,41 +808,47 @@ function parse_message(data) {
 			}
 		}
 		say(`File saved! Use "${ pref }load ${ shorthand }" to read it!`)
-	} else if (false && command == "userinfo") {
+	} else if (command == "userinfo") {
 		return say("W.I.P.") // remove this line if the work is done
 		/* ================================================================== *
-			Needs a refactor and adding the new features according to the
-			specification in the "help" manual.
+			Needs further development and adding the new features according to
+			the specification in the "help" manual.
 		* ================================================================== */
 		if (zero_arguments)
 			return form_userinfo(data.nick, data.color, data.home)
 
+		if (args.length < 2)
+			return say(lang["wrong_format"])
+
 		let search_mode = args[0]
-		if (search_mode == "home" && is_home(args[1])) {
+		if (search_mode.match(/h(ome)?/) && is_home(args[1])) {
 			let homes_of_username = args[1]
-		} else if (search_mode == "nick") {
+		} else if (search_mode.match(/n(ick)?/)) {
 			let username = args[1]
 			let homes_of_username = find_home_by_username(username)
-		} else if (search_mode == "id") {
-			return say("W.I.P.")
+		// } else if (search_mode == "id") {
+			// return say("W.I.P.")
 		} else {
 			return say(lang["wrong_format"])
 		}
 
-		if (current_users[username]) {
-			let msg = `Home has ${ current_users[username].length } name${ current_users[username].length > 1 ? "s" : "" } attached to it:`
-			current_users[username].forEach(function(value, index) {
-				msg += `\n ${ value[0] }, with the color of ${ value[1] }`
+		if (current_users[username]) { // if this nickname is online
+			let msg =
+				`Home has ${ current_users[username].length } name${ current_users[username].length > 1 ? "s" : "" } attached to it:`
+			current_users[username].forEach(function (value, index) {
+				msg +=
+					`\n ${ value[0] }, with the color of ${ value[1] }`
 			})
-			say(msg + `\n(And the perms of ${ inverse_privilege_key[privileges[homes_of_username]] })`)
+			say(msg +
+				`\n(And the perms of ${ inverse_privilege_key[privileges[homes_of_username]] })`
+				)
 		} else if (search_mode == "nick") {
-			if (blacklist[spec_home]) {
+			if (blacklist[spec_home] || homes_of_username.some(value =>
+				blacklist.includes(spec_home) {
 				let msg = `This home is blocked from using this bot.`
 				say(msg)
-			} else if (homes_of_username.some(value => blacklist.includes(spec_home))) {
-
 			} else {
-				say("The specified user does not exist in the database.")
+				say("The specified user is not registered in the database.")
 			}
 		}
 
@@ -869,18 +874,12 @@ function parse_message(data) {
 		if (zero_arguments)
 			return say(lang["missing_argument"])
 
-		/*
-		if (censor.isProfane(duck))
-			console.log(lang["warn_profane"])
-		*/
-
-		// say(censor.cleanProfanity(duck))
 		say(duck)
 	} else if (command == "text2braille") {
-		if (zero_arguments) return say("Missing argument!")
+		if (zero_arguments) return say(lang["missing_argument"])
 		say(to_braille(duck))
 	} else if (command == "braille2text") {
-		if (zero_arguments) return say("Missing argument!")
+		if (zero_arguments) return say(lang["missing_argument"])
 		say(from_braille(duck))
 	} else if (command == "shutdown" && is_dev_command) {
 		if (!check_if_this_privilege_or_higher(data.home, "Superuser"))
@@ -933,20 +932,21 @@ function parse_users(data) {
 				color = res
 			}
 		})
-		if (home !== "trollbox")
+		if (home != "trollbox")
 			current_users[username] = [username, home, color]
 	})
 }
 
 function on_user_joined_event(data) {
-	let is_me = data.nick == mynick && (data.home == myhome || myhome == "---")
-	let should_greet = check_if_this_privilege_or_higher(data.home, "Moderator") && !is_me
+	let is_me = data.nick == mynick && (data.home == myhome || myhome == "#")
+	let should_greet = check_if_this_privilege_or_higher(data.home, "Moderator")
+		&& !is_me
 	if (should_greet) {
 		let username = he.decode(data.nick)
 		let horizontal_box_length = " Welcome back, ! ".length + username.length
-		let ascii = `╔${ "═".repeat(horizontal_box_length) }╗\n`
-		ascii += `║ Welcome back, ${ username }! ║\n`
-		ascii += `╚${ "═".repeat(horizontal_box_length) }╝`
+		let ascii = `\u2554${ "\u2550".repeat(horizontal_box_length) }\u2557\n`
+		ascii += `\u2551 Welcome back, ${ username }! \u2551\n`
+		ascii += `\u255A${ "\u2550".repeat(horizontal_box_length) }\u255D`
 		say(ascii)
 	}
 }
@@ -964,12 +964,12 @@ if (__main__) {
 	if (!OFFLINE_MODE) {
 		console.log("Authenticating...")
 		socket.emit("user joined", mynick, mycolor)
-
 		console.log("Setting socket.io event handlers...")
 		socket.on("message", parse_message)
 		socket.on("update users", parse_users)
 		socket.on("user joined", on_user_joined_event)
-		socket.on("connect", () => console.log("Listening to commands from now."))
+		socket.on("connect", () => console.log(
+			"Listening to commands from now."))
 		setInterval(check_connection, 3e3)
 	}
 }
