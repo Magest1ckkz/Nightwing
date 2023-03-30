@@ -126,7 +126,7 @@ ${ pref }about - Show the information about the system the bot is running on.
 ${ pref }say <message> - Say something!
 ${ pref }text2braille <text> - Convert ASCII text to Braille.
 ${ pref }braille2text <text> - Convert Braille to ASCII text.
-(W.I.P.) ${ pref }userinfo < "home" | "nick" | "id" > <appropriate data to search by> - User info, such as username, color, home, and local permissions.
+${ pref }userinfo < "home" | "nick" | "id" > <appropriate data to search by> - User info, such as username, color, home, and local permissions.
 ${ pref }save <filename without whitespaces> <content> - Save a text file.
 ${ pref }add <filename without whitespaces> <content> - Append to a text file.
 ${ pref }load <filename without whitespaces> - Load a text file.
@@ -155,7 +155,7 @@ ${ devpref }evaljs - Execute JavaScript.`,
 const textfile_bool_properties = ["read-only", "fs-time"]
 
 // procedures
-const is_home = (str) => str.match(/^[A-Z0-9]{32,32}$/)
+const is_home = (str) => str.match(/^[A-Z0-9]{32,32}$/) !== null
 const timestamp = () => Math.floor(+new Date() / 1e3)
 const pad_num = (num) => num.toString().padStart(2, "0")
 const is_extended_textfile = (data) => data.match(/^NW\//) && data.match(/\x00\n/)
@@ -303,12 +303,17 @@ function form_userinfo(name, colors, homes) {
 		colors = [colors]
 	if (typeof homes === "string")
 		homes = [homes]
+
+	let perm_level = inverse_privilege_key[privileges[homes[0]]]
+	if (typeof perm_level === "undefined")
+		perm_level = "<unknown>"
+
 	say(
 		"• Name: " + he.decode(name) +
 		`\n• Color${ (colors.length > 1) ? "s" : "" }: ` + colors.join(", ") +
 		`\n• Home${ (homes.length > 1) ? "s" : "" }: ` + homes.join(", ") +
-		"\n• Permission level: " + inverse_privilege_key[privileges[homes[
-			0]]] // should display all of them, linked to homes
+		"\n• Permission level: " + perm_level
+			// should display all the permission levels, linked to homes
 	)
 }
 
@@ -809,7 +814,6 @@ function parse_message(data) {
 		}
 		say(`File saved! Use "${ pref }load ${ shorthand }" to read it!`)
 	} else if (command == "userinfo") {
-		return say("W.I.P.") // remove this line if the work is done
 		/* ================================================================== *
 			Needs further development and adding the new features according to
 			the specification in the "help" manual.
@@ -817,22 +821,37 @@ function parse_message(data) {
 		if (zero_arguments)
 			return form_userinfo(data.nick, data.color, data.home)
 
-		if (args.length < 2)
+		if (duck.length < 2)
 			return say(lang["wrong_format"])
 
-		let search_mode = args[0]
-		if (search_mode.match(/h(ome)?/) && is_home(args[1])) {
-			let homes_of_username = args[1]
-		} else if (search_mode.match(/n(ick)?/)) {
-			let username = args[1]
-			let homes_of_username = find_home_by_username(username)
+		let search_mode = duck[0]
+		let homes = []
+		let username = ""
+		if (search_mode.match(/^h(ome)?$/) && is_home(duck[1])) {
+			console.log("-> 1")
+			homes = duck[1]
+		} else if (search_mode.match(/^n(ick)?$/)) {
+			console.log("-> 2")
+			username = duck[1]
+			homes = find_home_by_username(username)
 		// } else if (search_mode == "id") {
 			// return say("W.I.P.")
 		} else {
+			console.log("-> 3")
+			console.log(is_home(duck[1]), search_mode,
+				search_mode.match(/^h(ome)?$/), search_mode.match(/^n(ick)?$/))
 			return say(lang["wrong_format"])
 		}
 
-		if (current_users[username]) { // if this nickname is online
+		let is_not_ok = typeof username === "undefined" || typeof homes === "undefined" ||
+			username == "" || homes.length == 0
+		if (is_not_ok)
+			return say(
+				"The specified user/home is not registered in the database."
+			)
+
+		if (typeof username !== "undefined" && current_users[username]) {
+			// if this nickname is online
 			let msg =
 				`Home has ${ current_users[username].length } name${ current_users[username].length > 1 ? "s" : "" } attached to it:`
 			current_users[username].forEach(function (value, index) {
@@ -840,24 +859,23 @@ function parse_message(data) {
 					`\n ${ value[0] }, with the color of ${ value[1] }`
 			})
 			say(msg +
-				`\n(And the perms of ${ inverse_privilege_key[privileges[homes_of_username]] })`
+				`\n(And the perms of ${ inverse_privilege_key[privileges[homes]] })`
 				)
 		} else if (search_mode == "nick") {
-			if (blacklist[spec_home] || homes_of_username.some(value =>
-				blacklist.includes(spec_home) {
-				let msg = `This home is blocked from using this bot.`
-				say(msg)
+			if (blacklist[spec_home] || homes.some(value =>
+				blacklist.includes(spec_home))) {
+				say(`This home is blocked from using this bot.`)
 			} else {
 				say("The specified user is not registered in the database.")
 			}
 		}
 
-		if (homes_of_username.length == 1) {
-			let infos = current_users[homes_of_username[0]]
-			form_userinfo(infos[0], infos[1], homes_of_username)
-		} else if (homes_of_username.length > 1) {
+		if (homes.length == 1) {
+			let infos = current_users[homes[0]]
+			form_userinfo(infos[0], infos[1], homes)
+		} else if (homes.length > 1) {
 			let colors = current_users[username][1]
-			form_userinfo(username, colors, homes_of_username)
+			form_userinfo(username, colors, homes)
 		}
 	} else if (command == "evaljs" && is_dev_command) {
 		if (!check_if_this_privilege_or_higher(data.home, "Superuser"))
@@ -960,6 +978,8 @@ if (__main__) {
 	})
 	rli.on("line", keyhandle)
 	rli.on("close", shutdown)
+
+	console.log("Done!")
 
 	if (!OFFLINE_MODE) {
 		console.log("Authenticating...")
